@@ -186,100 +186,114 @@ class StubGoldConnector(GoldConnector):
         }
 
 
-class LiveGoldConnector(GoldConnector):
-    """Real Oracle connector (python-oracledb), read-only service account.
-
-    Connection parameters come from Key Vault-backed settings (see config.py).
-    Actual view names are placeholders (specs.md §7 — "Instrumentation GOLD"
-    is still to be confirmed with the GOLD team) and must be filled in before
-    switching GOLD_MODE=live.
-    """
-
-    def __init__(self) -> None:
-        import oracledb  # imported lazily: not a hard dependency in stub mode
-
-        self._oracledb = oracledb
-        self._pool = oracledb.create_pool(
-            user=settings.oracle_user,
-            password=settings.oracle_password,
-            dsn=settings.oracle_dsn,
-            min=1,
-            max=4,
-            increment=1,
-        )
-
-    def _query_one(self, sql: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        with self._pool.acquire() as conn:
-            cursor = conn.cursor()
-            cursor.execute(sql, params or {})
-            columns = [c[0].lower() for c in cursor.description]
-            row = cursor.fetchone()
-            return dict(zip(columns, row)) if row else {}
-
-    def _query_all(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        with self._pool.acquire() as conn:
-            cursor = conn.cursor()
-            cursor.execute(sql, params or {})
-            columns = [c[0].lower() for c in cursor.description]
-            return [dict(zip(columns, row)) for row in cursor.fetchall()]
-
-    def get_o4hq_batch_status(self) -> dict[str, Any]:
-        # TODO(GOLD team): confirm the batch control-point view (specs.md §7, point 5).
-        row = self._query_one("SELECT * FROM V_SUP_O4HQ_BATCH_STATUS")
-        row["source_mode"] = "live"
-        return row
-
-    def get_store_sales_upload_status(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_STORE_SALES_UPLOAD")
-        row["source_mode"] = "live"
-        return row
-
-    def get_stock_update_latency(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_STOCK_UPDATE_LATENCY")
-        row["source_mode"] = "live"
-        return row
-
-    def get_collection_anomalies(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_COLLECTION_ANOMALIES")
-        row["source_mode"] = "live"
-        return row
-
-    def get_relex_input_completeness(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_RELEX_INPUT_COMPLETENESS")
-        row["source_mode"] = "live"
-        return row
-
-    def get_stock_consistency(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_STOCK_CONSISTENCY")
-        row["source_mode"] = "live"
-        return row
-
-    def get_order_proposals_reconciliation(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_ORDER_PROPOSALS_RECON")
-        row["source_mode"] = "live"
-        return row
-
-    def get_interface_rejects(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_INTERFACE_REJECTS")
-        row["source_mode"] = "live"
-        return row
-
-    def get_proposal_to_order_conversion(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_PROPOSAL_TO_ORDER")
-        row["source_mode"] = "live"
-        return row
-
-    def get_wms_import_status(self) -> dict[str, Any]:
-        row = self._query_one("SELECT * FROM V_SUP_WMS_IMPORT_STATUS")
-        row["source_mode"] = "live"
-        return row
-
-    def get_airflow_dag_status(self, dag_id: str) -> dict[str, Any]:
-        # TODO: confirm whether this comes from the Airflow REST API (flux F1d,
-        # port to confirm with GOLD team) rather than an Oracle view.
-        row = self._query_one("SELECT * FROM V_SUP_AIRFLOW_DAG_STATUS WHERE dag_id = :dag_id", {"dag_id": dag_id})
-        row["source_mode"] = "live"
-        return row
+# ============================================================================
+# CONNEXION RÉELLE — désactivée par défaut.
+#
+# Pour brancher ce serveur sur le vrai GOLD (Oracle) :
+#   1. `pip install oracledb` (déjà dans requirements.txt)
+#   2. Décommenter la classe `LiveGoldConnector` ci-dessous
+#   3. Décommenter la ligne `return LiveGoldConnector()` dans
+#      `build_gold_connector()` un peu plus bas
+#   4. Confirmer les noms de vues Oracle avec l'équipe GOLD (specs.md §7) et
+#      les corriger dans les requêtes SELECT ci-dessous
+#   5. Renseigner ORACLE_DSN / ORACLE_USER / ORACLE_PASSWORD (Key Vault en
+#      prod, .env en local) et passer GOLD_MODE=live
+#
+# class LiveGoldConnector(GoldConnector):
+#     """Real Oracle connector (python-oracledb), read-only service account.
+#
+#     Connection parameters come from Key Vault-backed settings (see config.py).
+#     Actual view names are placeholders (specs.md §7 — "Instrumentation GOLD"
+#     is still to be confirmed with the GOLD team) and must be filled in before
+#     switching GOLD_MODE=live.
+#     """
+#
+#     def __init__(self) -> None:
+#         import oracledb  # imported lazily: not a hard dependency in stub mode
+#
+#         self._oracledb = oracledb
+#         self._pool = oracledb.create_pool(
+#             user=settings.oracle_user,
+#             password=settings.oracle_password,
+#             dsn=settings.oracle_dsn,
+#             min=1,
+#             max=4,
+#             increment=1,
+#         )
+#
+#     def _query_one(self, sql: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+#         with self._pool.acquire() as conn:
+#             cursor = conn.cursor()
+#             cursor.execute(sql, params or {})
+#             columns = [c[0].lower() for c in cursor.description]
+#             row = cursor.fetchone()
+#             return dict(zip(columns, row)) if row else {}
+#
+#     def _query_all(self, sql: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+#         with self._pool.acquire() as conn:
+#             cursor = conn.cursor()
+#             cursor.execute(sql, params or {})
+#             columns = [c[0].lower() for c in cursor.description]
+#             return [dict(zip(columns, row)) for row in cursor.fetchall()]
+#
+#     def get_o4hq_batch_status(self) -> dict[str, Any]:
+#         # TODO(GOLD team): confirm the batch control-point view (specs.md §7, point 5).
+#         row = self._query_one("SELECT * FROM V_SUP_O4HQ_BATCH_STATUS")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_store_sales_upload_status(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_STORE_SALES_UPLOAD")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_stock_update_latency(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_STOCK_UPDATE_LATENCY")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_collection_anomalies(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_COLLECTION_ANOMALIES")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_relex_input_completeness(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_RELEX_INPUT_COMPLETENESS")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_stock_consistency(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_STOCK_CONSISTENCY")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_order_proposals_reconciliation(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_ORDER_PROPOSALS_RECON")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_interface_rejects(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_INTERFACE_REJECTS")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_proposal_to_order_conversion(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_PROPOSAL_TO_ORDER")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_wms_import_status(self) -> dict[str, Any]:
+#         row = self._query_one("SELECT * FROM V_SUP_WMS_IMPORT_STATUS")
+#         row["source_mode"] = "live"
+#         return row
+#
+#     def get_airflow_dag_status(self, dag_id: str) -> dict[str, Any]:
+#         # TODO: confirm whether this comes from the Airflow REST API (flux F1d,
+#         # port to confirm with GOLD team) rather than an Oracle view.
+#         row = self._query_one("SELECT * FROM V_SUP_AIRFLOW_DAG_STATUS WHERE dag_id = :dag_id", {"dag_id": dag_id})
+#         row["source_mode"] = "live"
+#         return row
+# ============================================================================
 
 
 def build_gold_connector() -> GoldConnector:
@@ -287,5 +301,12 @@ def build_gold_connector() -> GoldConnector:
 
     mode = resolve_mode("GOLD_MODE", ConnectorMode.STUB)
     if mode is ConnectorMode.LIVE:
-        return LiveGoldConnector()
+        # Décommenter la ligne suivante une fois le bloc LiveGoldConnector
+        # ci-dessus décommenté (voir instructions juste au-dessus) :
+        # return LiveGoldConnector()
+        raise RuntimeError(
+            "GOLD_MODE=live mais LiveGoldConnector est encore commenté dans "
+            "connectors.py. Décommentez le bloc 'CONNEXION RÉELLE' et la ligne "
+            "'return LiveGoldConnector()' avant de redéployer (voir DEPLOYMENT.md)."
+        )
     return StubGoldConnector(seed=settings.stub_seed)

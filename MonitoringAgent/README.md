@@ -1,6 +1,6 @@
 # MonitoringAgent
 
-Supervision du processus Order Management LabelVie (O4HQ → GOLD → RELEX → GOLD → WMS Infolog/Generix). Voir [`specs.md`](./specs.md) pour la grille complète des indicateurs et l'architecture cible.
+Supervision du processus Order Management LabelVie (O4HQ → GOLD → RELEX → GOLD → WMS Infolog/Generix). Voir [`specs.md`](./specs.md) pour la grille complète des indicateurs et l'architecture cible, et [`DEPLOYMENT.md`](./DEPLOYMENT.md) pour la marche à suivre complète, étape par étape, du test local jusqu'au passage en production.
 
 ## Structure
 

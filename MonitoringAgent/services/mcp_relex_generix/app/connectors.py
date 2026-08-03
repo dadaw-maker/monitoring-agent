@@ -93,74 +93,89 @@ class StubRelexConnector(RelexConnector):
         }
 
 
-class LiveRelexConnector(RelexConnector):
-    """Queries the RELEX OpenTelemetry API + REST API (flux F0a).
-
-    Authentication: OAuth2 client-credentials against `relex_oauth_token_url`,
-    then bearer token + `relex_api_key` header on every call.
-    """
-
-    def __init__(self) -> None:
-        import httpx
-
-        self._httpx = httpx
-        self._client = httpx.Client(base_url=settings.relex_base_url, timeout=settings.http_timeout_seconds)
-        self._otel_client = httpx.Client(base_url=settings.relex_otel_url, timeout=settings.http_timeout_seconds)
-
-    def _token(self) -> str:
-        resp = self._httpx.post(
-            settings.relex_oauth_token_url,
-            data={
-                "grant_type": "client_credentials",
-                "client_id": settings.relex_client_id,
-                "client_secret": settings.relex_client_secret,
-            },
-            timeout=settings.http_timeout_seconds,
-        )
-        resp.raise_for_status()
-        return resp.json()["access_token"]
-
-    def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._token()}", "X-Api-Key": settings.relex_api_key}
-
-    def get_service_health(self) -> dict[str, Any]:
-        # TODO(RELEX/WZM): confirm the health-check endpoint exposed by the OTel API.
-        resp = self._otel_client.get("/health", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_calculation_traces(self) -> dict[str, Any]:
-        # TODO(RELEX/WZM): confirm span/attribute names for the replenishment-calc trace.
-        resp = self._otel_client.get("/traces", params={"span": "replenishment_calc"}, headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_proposals_coverage(self) -> dict[str, Any]:
-        resp = self._client.get("/order-proposals/coverage", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_fallback_usage(self) -> dict[str, Any]:
-        resp = self._client.get("/order-proposals/reserve/usage", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_proposal_anomalies(self) -> dict[str, Any]:
-        # TODO(RELEX/WZM): business attributes (quantite_nulle, DLC...) still to be
-        # confirmed on the span payload — see specs.md §6.2, CAL-7.
-        resp = self._client.get("/order-proposals/anomalies", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
+# ============================================================================
+# CONNEXION RÉELLE — désactivée par défaut.
+#
+# Pour brancher ce serveur sur le vrai RELEX :
+#   1. `pip install httpx` (déjà dans requirements.txt)
+#   2. Décommenter la classe `LiveRelexConnector` ci-dessous
+#   3. Décommenter la ligne `return LiveRelexConnector()` dans
+#      `build_relex_connector()` un peu plus bas
+#   4. Confirmer les endpoints/attributs exacts avec l'équipe RELEX (WZM),
+#      voir les TODO dans le code ci-dessous et specs.md §7
+#   5. Renseigner RELEX_BASE_URL / RELEX_OTEL_URL / RELEX_OAUTH_TOKEN_URL /
+#      RELEX_CLIENT_ID / RELEX_CLIENT_SECRET / RELEX_API_KEY (Key Vault en
+#      prod, .env en local) et passer RELEX_MODE=live
+#
+# class LiveRelexConnector(RelexConnector):
+#     """Queries the RELEX OpenTelemetry API + REST API (flux F0a).
+#
+#     Authentication: OAuth2 client-credentials against `relex_oauth_token_url`,
+#     then bearer token + `relex_api_key` header on every call.
+#     """
+#
+#     def __init__(self) -> None:
+#         import httpx
+#
+#         self._httpx = httpx
+#         self._client = httpx.Client(base_url=settings.relex_base_url, timeout=settings.http_timeout_seconds)
+#         self._otel_client = httpx.Client(base_url=settings.relex_otel_url, timeout=settings.http_timeout_seconds)
+#
+#     def _token(self) -> str:
+#         resp = self._httpx.post(
+#             settings.relex_oauth_token_url,
+#             data={
+#                 "grant_type": "client_credentials",
+#                 "client_id": settings.relex_client_id,
+#                 "client_secret": settings.relex_client_secret,
+#             },
+#             timeout=settings.http_timeout_seconds,
+#         )
+#         resp.raise_for_status()
+#         return resp.json()["access_token"]
+#
+#     def _headers(self) -> dict[str, str]:
+#         return {"Authorization": f"Bearer {self._token()}", "X-Api-Key": settings.relex_api_key}
+#
+#     def get_service_health(self) -> dict[str, Any]:
+#         # TODO(RELEX/WZM): confirm the health-check endpoint exposed by the OTel API.
+#         resp = self._otel_client.get("/health", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_calculation_traces(self) -> dict[str, Any]:
+#         # TODO(RELEX/WZM): confirm span/attribute names for the replenishment-calc trace.
+#         resp = self._otel_client.get("/traces", params={"span": "replenishment_calc"}, headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_proposals_coverage(self) -> dict[str, Any]:
+#         resp = self._client.get("/order-proposals/coverage", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_fallback_usage(self) -> dict[str, Any]:
+#         resp = self._client.get("/order-proposals/reserve/usage", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_proposal_anomalies(self) -> dict[str, Any]:
+#         # TODO(RELEX/WZM): business attributes (quantite_nulle, DLC...) still to be
+#         # confirmed on the span payload — see specs.md §6.2, CAL-7.
+#         resp = self._client.get("/order-proposals/anomalies", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+# ============================================================================
 
 
 def build_relex_connector() -> RelexConnector:
@@ -168,7 +183,14 @@ def build_relex_connector() -> RelexConnector:
 
     mode = resolve_mode("RELEX_MODE", ConnectorMode.STUB)
     if mode is ConnectorMode.LIVE:
-        return LiveRelexConnector()
+        # Décommenter la ligne suivante une fois le bloc LiveRelexConnector
+        # ci-dessus décommenté (voir instructions juste au-dessus) :
+        # return LiveRelexConnector()
+        raise RuntimeError(
+            "RELEX_MODE=live mais LiveRelexConnector est encore commenté dans "
+            "connectors.py. Décommentez le bloc 'CONNEXION RÉELLE' et la ligne "
+            "'return LiveRelexConnector()' avant de redéployer (voir DEPLOYMENT.md)."
+        )
     return StubRelexConnector(seed=settings.stub_seed)
 
 
@@ -219,43 +241,57 @@ class StubGenerixConnector(GenerixConnector):
         }
 
 
-class LiveGenerixConnector(GenerixConnector):
-    """Real Generix/Infolog WMS connector (flux F0b).
-
-    Interface is not confirmed yet (REST vs. SOAP/EDI — specs.md §7); this
-    skeleton assumes REST/JSON and must be adjusted (e.g. swapped for a
-    `zeep` SOAP client) once IDL confirms the actual protocol.
-    """
-
-    def __init__(self) -> None:
-        import httpx
-
-        self._client = httpx.Client(base_url=settings.generix_base_url, timeout=settings.http_timeout_seconds)
-
-    def _headers(self) -> dict[str, str]:
-        return {"X-Api-Key": settings.generix_api_key}
-
-    def get_service_health(self) -> dict[str, Any]:
-        # TODO(IDL): confirm the health/acknowledgement endpoint (specs.md §7, point 3).
-        resp = self._client.get("/health", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_import_duration(self) -> dict[str, Any]:
-        resp = self._client.get("/orders/import-stats", headers=self._headers())
-        resp.raise_for_status()
-        data = resp.json()
-        data["source_mode"] = "live"
-        return data
-
-    def get_direct_relex_wms_flow(self) -> dict[str, Any]:
-        # TODO(RELEX/IDL): this flow is not qualified yet — see specs.md §6.5, §7.
-        raise NotImplementedError(
-            "Flux direct RELEX<->WMS non qualifié : atelier RELEX/IDL requis avant "
-            "d'implémenter ce connecteur live (voir specs.md §6.5 et §7)."
-        )
+# ============================================================================
+# CONNEXION RÉELLE — désactivée par défaut.
+#
+# Pour brancher ce serveur sur le vrai Generix/Infolog WMS :
+#   1. `pip install httpx` (déjà dans requirements.txt — remplacer par `zeep`
+#      si IDL confirme une interface SOAP plutôt que REST, voir specs.md §7)
+#   2. Décommenter la classe `LiveGenerixConnector` ci-dessous
+#   3. Décommenter la ligne `return LiveGenerixConnector()` dans
+#      `build_generix_connector()` un peu plus bas
+#   4. Confirmer l'interface exacte avec l'intégrateur IDL (specs.md §7)
+#   5. Renseigner GENERIX_BASE_URL / GENERIX_API_KEY (Key Vault en prod, .env
+#      en local) et passer GENERIX_MODE=live
+#
+# class LiveGenerixConnector(GenerixConnector):
+#     """Real Generix/Infolog WMS connector (flux F0b).
+#
+#     Interface is not confirmed yet (REST vs. SOAP/EDI — specs.md §7); this
+#     skeleton assumes REST/JSON and must be adjusted (e.g. swapped for a
+#     `zeep` SOAP client) once IDL confirms the actual protocol.
+#     """
+#
+#     def __init__(self) -> None:
+#         import httpx
+#
+#         self._client = httpx.Client(base_url=settings.generix_base_url, timeout=settings.http_timeout_seconds)
+#
+#     def _headers(self) -> dict[str, str]:
+#         return {"X-Api-Key": settings.generix_api_key}
+#
+#     def get_service_health(self) -> dict[str, Any]:
+#         # TODO(IDL): confirm the health/acknowledgement endpoint (specs.md §7, point 3).
+#         resp = self._client.get("/health", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_import_duration(self) -> dict[str, Any]:
+#         resp = self._client.get("/orders/import-stats", headers=self._headers())
+#         resp.raise_for_status()
+#         data = resp.json()
+#         data["source_mode"] = "live"
+#         return data
+#
+#     def get_direct_relex_wms_flow(self) -> dict[str, Any]:
+#         # TODO(RELEX/IDL): this flow is not qualified yet — see specs.md §6.5, §7.
+#         raise NotImplementedError(
+#             "Flux direct RELEX<->WMS non qualifié : atelier RELEX/IDL requis avant "
+#             "d'implémenter ce connecteur live (voir specs.md §6.5 et §7)."
+#         )
+# ============================================================================
 
 
 def build_generix_connector() -> GenerixConnector:
@@ -263,5 +299,12 @@ def build_generix_connector() -> GenerixConnector:
 
     mode = resolve_mode("GENERIX_MODE", ConnectorMode.STUB)
     if mode is ConnectorMode.LIVE:
-        return LiveGenerixConnector()
+        # Décommenter la ligne suivante une fois le bloc LiveGenerixConnector
+        # ci-dessus décommenté (voir instructions juste au-dessus) :
+        # return LiveGenerixConnector()
+        raise RuntimeError(
+            "GENERIX_MODE=live mais LiveGenerixConnector est encore commenté dans "
+            "connectors.py. Décommentez le bloc 'CONNEXION RÉELLE' et la ligne "
+            "'return LiveGenerixConnector()' avant de redéployer (voir DEPLOYMENT.md)."
+        )
     return StubGenerixConnector(seed=settings.stub_seed)
