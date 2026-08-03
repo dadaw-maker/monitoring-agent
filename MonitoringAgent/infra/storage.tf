@@ -56,11 +56,42 @@ locals {
   grafana_provisioning_files = fileset("${path.module}/../monitoring/grafana/provisioning", "**/*")
 }
 
+# Azure Files does not auto-create parent directories when uploading a file
+# at a nested path — each directory level needs its own resource, created
+# before the files that live in it (dashboards/json/ depends on dashboards/).
+resource "azurerm_storage_share_directory" "grafana_provisioning_datasources" {
+  name             = "datasources"
+  storage_share_id = azurerm_storage_share.grafana_provisioning.id
+}
+
+resource "azurerm_storage_share_directory" "grafana_provisioning_dashboards" {
+  name             = "dashboards"
+  storage_share_id = azurerm_storage_share.grafana_provisioning.id
+}
+
+resource "azurerm_storage_share_directory" "grafana_provisioning_dashboards_json" {
+  name             = "dashboards/json"
+  storage_share_id = azurerm_storage_share.grafana_provisioning.id
+  depends_on       = [azurerm_storage_share_directory.grafana_provisioning_dashboards]
+}
+
+resource "azurerm_storage_share_directory" "grafana_provisioning_alerting" {
+  name             = "alerting"
+  storage_share_id = azurerm_storage_share.grafana_provisioning.id
+}
+
 resource "azurerm_storage_share_file" "grafana_provisioning" {
   for_each         = local.grafana_provisioning_files
   name             = each.value
   storage_share_id = azurerm_storage_share.grafana_provisioning.id
   source           = "${path.module}/../monitoring/grafana/provisioning/${each.value}"
+
+  depends_on = [
+    azurerm_storage_share_directory.grafana_provisioning_datasources,
+    azurerm_storage_share_directory.grafana_provisioning_dashboards,
+    azurerm_storage_share_directory.grafana_provisioning_dashboards_json,
+    azurerm_storage_share_directory.grafana_provisioning_alerting,
+  ]
 }
 
 resource "azurerm_container_app_environment_storage" "prometheus_config" {

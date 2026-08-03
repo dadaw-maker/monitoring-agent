@@ -48,6 +48,7 @@ MonitoringAgent/
 │           ├── mcp_clients.py        # Sait appeler un outil sur un serveur MCP et récupérer le résultat
 │           ├── indicators_unitaires.py  # Calcule les 34 indicateurs unitaires (COL-1 à E2E-5) à partir des données brutes
 │           ├── indicators_chapeau.py    # Combine les unitaires pour produire les 6 indicateurs chapeau + l'indicateur de tête
+│           ├── dashboard_essentiel.py   # Extrait les chiffres bruts ("1 483 sur 1 522"...) affichés par la maquette du §8
 │           ├── scheduler.py          # Boucle qui tourne toutes les 60s : interroge les 2 serveurs MCP, calcule, publie
 │           ├── metrics_exporter.py   # Transforme les résultats en métriques au format Prometheus
 │           └── main.py               # Serveur web de l'agent : /health, /metrics, /indicators
@@ -56,9 +57,13 @@ MonitoringAgent/
 │   ├── prometheus/prometheus.yml     # Dit à Prometheus où aller chercher les métriques (l'agent)
 │   └── grafana/provisioning/
 │       ├── datasources/prometheus.yml   # Dit à Grafana où trouver Prometheus
-│       └── dashboards/
-│           ├── dashboards.yml            # Dit à Grafana où trouver les fichiers de tableaux de bord
-│           └── json/order-management.json  # Le tableau de bord lui-même (statuts, indicateurs)
+│       ├── dashboards/
+│       │   ├── dashboards.yml            # Dit à Grafana où trouver les fichiers de tableaux de bord
+│       │   └── json/order-management.json  # Le tableau de bord (reproduit la maquette de specs.md §8)
+│       └── alerting/                      # Alerte Teams (Grafana route les alertes, specs.md §9.1)
+│           ├── contactpoints.yaml            # Le webhook Teams à contacter
+│           ├── policies.yaml                 # Quelles alertes partent vers ce contact
+│           └── rules.yaml                    # Les règles : quand déclencher une alerte
 │
 ├── infra/                            # Tout le code Terraform pour créer les ressources Azure
 │   ├── providers.tf                  # Quelle version de Terraform et du plugin Azure utiliser
@@ -255,6 +260,23 @@ az containerapp auth microsoft update \
 ```
 
 Voir le commentaire en fin de `infra/container_apps.tf` pour le contexte complet.
+
+---
+
+## Étape 9 (optionnelle) — Activer l'alerte Teams
+
+**Ce que ça fait** : configure Grafana pour envoyer un message dans un canal Teams quand l'indicateur de tête, un indicateur chapeau, ou la collecte elle-même, passe en anomalie (voir `monitoring/grafana/provisioning/alerting/`).
+
+1. Dans Teams, sur le canal cible : **Connecteurs → Webhook entrant** → créer, copier l'URL générée.
+2. En local : renseigner `TEAMS_WEBHOOK_URL` dans `.env`, puis `docker compose up -d grafana` pour recharger.
+3. En Azure :
+   ```bash
+   az keyvault secret set --vault-name <nom-du-kv> --name teams-webhook-url --value "<url-du-webhook>"
+   az containerapp revision restart --name <ca-...-grafana> --resource-group <rg-...>
+   ```
+4. Vérifier dans Grafana → **Alerting → Contact points** que `teams-order-management` est bien configuré, puis déclencher un test depuis cet écran.
+
+Tant que `TEAMS_WEBHOOK_URL` reste vide ou à `changeme`, Grafana tourne normalement mais n'envoie simplement rien — ce n'est jamais bloquant pour le reste du projet.
 
 ---
 

@@ -47,6 +47,26 @@ poll_last_timestamp = Gauge(
     registry=registry,
 )
 
+# --------------------------------------------------------------------------
+# Compteurs bruts dédiés à la maquette de tableau de bord (specs.md §8).
+# Les indicateurs unitaires/chapeaux exposent des %/statuts, mais la maquette
+# affiche aussi des chiffres bruts ("1 483 sur 1 522", "48 sur 50"...) qui ne
+# sont pas des indicateurs en soi — ce sont ces compteurs.
+# --------------------------------------------------------------------------
+
+dashboard_essentiel = Gauge(
+    "order_mgmt_dashboard_essentiel",
+    "Compteurs bruts utilisés par les tuiles 'L'essentiel du jour' de la maquette (specs.md §8)",
+    ["metric"],
+    registry=registry,
+)
+
+
+def publish_dashboard_essentiel(counts: dict[str, float]) -> None:
+    for metric, value in counts.items():
+        if value is not None:
+            dashboard_essentiel.labels(metric=metric).set(value)
+
 
 def publish_unitaires(results: dict[str, IndicatorResult]) -> None:
     for result in results.values():

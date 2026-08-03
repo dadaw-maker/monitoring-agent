@@ -27,9 +27,13 @@ docker compose up --build
 
 - Agent : http://localhost:8000/health, /metrics, /indicators
 - Prometheus : http://localhost:9090
-- Grafana : http://localhost:3000 (admin / voir `GRAFANA_ADMIN_PASSWORD`)
+- Grafana : http://localhost:3000 (admin / voir `GRAFANA_ADMIN_PASSWORD`) — dashboard "Order Management" reproduisant la maquette de `specs.md §8` (3 sections : L'essentiel du jour / Où en est la chaîne / Ce qui demande une décision), plus une section technique repliée avec les codes d'indicateurs bruts pour l'exploitation
 - MCP GOLD : http://localhost:8001 (protocole MCP, pas un site web classique)
 - MCP RELEX/Generix : http://localhost:8002
+
+### Alerte Teams
+
+Grafana route les alertes vers Teams (specs.md §9.1) via `monitoring/grafana/provisioning/alerting/` (point de contact, politique de notification, règles sur l'indicateur de tête, les indicateurs chapeau et les échecs de collecte de l'agent). Renseigner `TEAMS_WEBHOOK_URL` dans `.env` (local) ou le secret Key Vault `teams-webhook-url` (Azure) — voir DEPLOYMENT.md.
 
 Par défaut, tout tourne en mode **stub** (`GOLD_MODE=RELEX_MODE=GENERIX_MODE=stub`) : les trois connecteurs renvoient des données fictives mais réalistes, ce qui permet de faire tourner tout le pipeline — MCP → agent → indicateurs → Prometheus → Grafana — sans aucun accès aux systèmes réels.
 

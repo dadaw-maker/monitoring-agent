@@ -163,6 +163,13 @@ variable "grafana_admin_password" {
   sensitive = true
 }
 
+variable "teams_webhook_url" {
+  description = "Incoming webhook URL of the Teams channel that receives supervision alerts (specs.md §9.1 \"Grafana ... route les alertes\"). Leave as placeholder to deploy with alerting disabled."
+  type        = string
+  default     = "changeme"
+  sensitive   = true
+}
+
 # --------------------------------------------------------------------------
 # Security toggles
 # --------------------------------------------------------------------------

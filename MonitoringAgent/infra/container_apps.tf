@@ -241,6 +241,11 @@ resource "azurerm_container_app" "grafana" {
     key_vault_secret_id = azurerm_key_vault_secret.this["grafana-admin-password"].id
     identity            = azurerm_user_assigned_identity.grafana.id
   }
+  secret {
+    name                = "teams-webhook-url"
+    key_vault_secret_id = azurerm_key_vault_secret.this["teams-webhook-url"].id
+    identity            = azurerm_user_assigned_identity.grafana.id
+  }
 
   template {
     min_replicas = 1
@@ -259,6 +264,16 @@ resource "azurerm_container_app" "grafana" {
       env {
         name  = "GF_AUTH_ANONYMOUS_ENABLED"
         value = "false"
+      }
+      env {
+        name  = "GF_UNIFIED_ALERTING_ENABLED"
+        value = "true"
+      }
+      env {
+        # Consommé par monitoring/grafana/provisioning/alerting/contactpoints.yaml
+        # via $__env{TEAMS_WEBHOOK_URL} (specs.md §9.1 "Grafana ... route les alertes").
+        name        = "TEAMS_WEBHOOK_URL"
+        secret_name = "teams-webhook-url"
       }
 
       volume_mounts {

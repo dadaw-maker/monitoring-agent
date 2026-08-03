@@ -1,0 +1,96 @@
+# Règles d'alerte Grafana, évaluées sur les métriques Prometheus publiées
+# par l'agent (order_mgmt_chapeau_status, cf. services/agent/app/metrics_exporter.py).
+# 0=ok 1=warning 2=critical 3=unknown (voir ordermgmt_common/models.py).
+#
+# ⚠️ Schéma indicatif : à valider avec `terraform`/`docker compose up` sur la
+# version de Grafana réellement déployée avant mise en production (voir
+# DEPLOYMENT.md) — le format de provisioning de l'alerting unifié évolue
+# d'une version à l'autre de Grafana.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: order-management-alerts
+    folder: "Order Management"
+    interval: 1m
+    rules:
+      - uid: order-mgmt-tete-critical
+        title: "Indicateur de tête en anomalie — le processus n'a pas tourné cette nuit"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus_ordermgmt
+            model:
+              refId: A
+              instant: true
+              expr: order_mgmt_chapeau_status{code="TETE"}
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] } # > 1 = warning/critical (specs.md §5)
+        labels:
+          severity: critical
+        annotations:
+          summary: "Part des magasins ayant reçu une commande de réassort exploitable avant cut-off : en anomalie (specs.md §5, indicateur de tête)."
+
+      - uid: order-mgmt-chapeau-critical
+        title: "Un indicateur chapeau est en anomalie"
+        condition: C
+        for: 5m
+        noDataState: NoData
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus_ordermgmt
+            model:
+              refId: A
+              instant: true
+              expr: max(order_mgmt_chapeau_status{code!="TETE"})
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        labels:
+          severity: critical
+        annotations:
+          summary: "Au moins un des 6 indicateurs chapeau (specs.md §5) est passé en statut critique — voir le tableau de bord pour identifier lequel."
+
+      - uid: order-mgmt-agent-poll-failed
+        title: "L'agent de supervision n'arrive plus à collecter les indicateurs"
+        condition: C
+        for: 5m
+        noDataState: Alerting
+        execErrState: Alerting
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus_ordermgmt
+            model:
+              refId: A
+              instant: true
+              expr: order_mgmt_poll_cycle_success
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        labels:
+          severity: critical
+        annotations:
+          summary: "Le dernier cycle de collecte de l'agent a échoué — un ou les deux serveurs MCP (GOLD, RELEX/Generix) sont probablement injoignables."

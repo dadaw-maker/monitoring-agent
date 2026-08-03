@@ -22,6 +22,11 @@ gold_mode     = "stub"
 relex_mode    = "stub"
 generix_mode  = "stub"
 
+# --- Alerting ---
+# Webhook entrant d'un canal Teams (Teams > canal > Connecteurs > Webhook
+# entrant). "changeme" déploie avec l'alerte Teams inactive.
+teams_webhook_url = "changeme"
+
 # --- Security ---
 enable_defender_for_cloud     = false
 enable_nsg_flow_logs           = false

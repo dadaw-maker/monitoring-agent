@@ -31,6 +31,7 @@ Après le premier `apply` :
 1. Construire et pousser les 3 images (`mcp-relex-generix`, `agent`, `mcp-gold`) vers l'ACR créé (`terraform output container_registry_login_server`).
 2. Remplacer les secrets `changeme` par les vraies valeurs directement dans le Key Vault (`terraform output key_vault_name`) — Terraform ignore ensuite les changements de valeur (`lifecycle.ignore_changes`), donc pas de conflit au prochain `apply`.
 3. Basculer `GOLD_MODE` / `RELEX_MODE` / `GENERIX_MODE` sur `live` une fois les credentials réels en place (variable Terraform, ou directement le secret Key Vault `*-mode` puis redéploiement du revision Container App).
+3bis. Renseigner le secret Key Vault `teams-webhook-url` (URL d'un webhook entrant créé sur un canal Teams) pour activer l'alerte — voir `../monitoring/grafana/provisioning/alerting/`. Laissé à `changeme`, Grafana tourne mais n'envoie rien.
 4. Déployer `mcp_gold` on-premises avec le token ACR scope-map créé (`terraform output mcp_gold_acr_pull_token_name`).
 5. Finaliser l'authentification Entra ID sur Grafana (commande `az containerapp auth microsoft update`, voir commentaire en fin de `container_apps.tf`).
 

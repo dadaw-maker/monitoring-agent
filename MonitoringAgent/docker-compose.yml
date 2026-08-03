@@ -59,6 +59,11 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_UNIFIED_ALERTING_ENABLED: "true"
+      # Consommé par contactpoints.yaml via $__env{TEAMS_WEBHOOK_URL} —
+      # laisser vide désactive de fait l'alerte (Grafana n'enverra rien
+      # vers une URL vide, l'erreur reste locale aux logs Grafana).
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
     depends_on:

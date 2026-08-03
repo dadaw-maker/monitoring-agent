@@ -1,0 +1,18 @@
+# Point de contact Teams — specs.md §9.1 : "Grafana ... route les alertes".
+#
+# L'URL du webhook entrant Teams n'est jamais écrite ici en clair : elle est
+# injectée via la variable d'environnement TEAMS_WEBHOOK_URL (voir
+# docker-compose.yml en local, infra/keyvault.tf + infra/container_apps.tf
+# en Azure). Grafana substitue $__env{...} au chargement du fichier de
+# provisioning.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: teams-order-management
+    receivers:
+      - uid: teams-order-management-webhook
+        type: teams
+        settings:
+          url: $__env{TEAMS_WEBHOOK_URL}
+        disableResolveMessage: false

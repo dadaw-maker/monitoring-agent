@@ -1,0 +1,16 @@
+# Politique de notification : toute alerte de ce projet part vers le point
+# de contact Teams défini dans contactpoints.yaml.
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: teams-order-management
+    group_by: ["alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: teams-order-management
+        object_matchers:
+          - ["severity", "=", "critical"]
+        continue: false

@@ -18,6 +18,7 @@ from ordermgmt_common.models import ChapeauResult, IndicatorResult
 from . import indicators_chapeau as chapeau
 from . import indicators_unitaires as unitaires
 from .config import settings
+from .dashboard_essentiel import extract_essentiel_counts
 from .mcp_clients import safe_call
 
 logger = logging.getLogger("agent.scheduler")
@@ -106,7 +107,13 @@ def _compute_unitaires(gold: dict[str, Any], rg: dict[str, Any]) -> dict[str, In
 
 
 async def run_cycle() -> None:
-    from .metrics_exporter import poll_last_timestamp, poll_success, publish_chapeaux, publish_unitaires
+    from .metrics_exporter import (
+        poll_last_timestamp,
+        poll_success,
+        publish_chapeaux,
+        publish_dashboard_essentiel,
+        publish_unitaires,
+    )
 
     try:
         gold, rg = await asyncio.gather(_fetch_gold(), _fetch_relex_generix())
@@ -115,6 +122,7 @@ async def run_cycle() -> None:
 
         publish_unitaires(unitaire_results)
         publish_chapeaux(chapeau_results)
+        publish_dashboard_essentiel(extract_essentiel_counts(gold, rg))
 
         snapshot.unitaires = unitaire_results
         snapshot.chapeaux = chapeau_results

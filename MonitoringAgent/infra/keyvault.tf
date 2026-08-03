@@ -65,6 +65,7 @@ locals {
     "generix-api-key"          = var.generix_api_key
     "grafana-admin-password"   = var.grafana_admin_password
     "vpn-shared-key"           = var.vpn_shared_key
+    "teams-webhook-url"        = var.teams_webhook_url
   }
 }
 
