@@ -1,226 +1,261 @@
-# MonitoringAgent — Agent de Supervision Order Management
+# MonitoringAgent — Spécifications
+## Supervision du processus Order Management — LabelVie
 
-## 1. Vision du produit
-
-MonitoringAgent est un agent IA de supervision du **flux de gestion des commandes** (Order Management), déployé sur **Azure Container Apps**. Il surveille en continu plusieurs systèmes hétérogènes (ERP Oracle, Relex, Generix), calcule des indicateurs de suivi, expose un dashboard temps réel et déclenche des alertes en cas d'anomalie.
-
-Contrairement à un simple script de monitoring, MonitoringAgent s'appuie sur le **Claude Agent SDK** : au-delà de la collecte automatique et de l'alerting, il permet d'interroger l'état des commandes en langage naturel et de diagnostiquer une anomalie (ex. *"Pourquoi les commandes du site Lyon sont bloquées depuis ce matin ?"*).
+> Ce document reprend et structure la *Note d'Architecture — Métriques de supervision Order Management* (LabelVie / Pôle TECH, V1.0, 28/07/2026) comme spécification du projet MonitoringAgent. Il remplace la première version générique de ce fichier : les indicateurs, seuils et l'architecture ci-dessous sont ceux validés dans la note source.
 
 ---
 
-## 2. Systèmes sources et intégrations
+## 1. Contexte
 
-| Système | Rôle | Mode d'accès |
+Le processus Order Management couvre la chaîne : **Serveur Central O4HQ → GOLD → RELEX → GOLD → WMS**, de la collecte des ventes magasin jusqu'à l'envoi de l'ordre de préparation à l'entrepôt.
+
+**Contrainte structurante** : RELEX et le WMS sont en **SaaS**, GOLD est **on-premises**, et seul RELEX expose nativement une API OpenTelemetry — ce qui détermine les métriques réellement disponibles par système.
+
+## 2. Objectifs
+
+Construire une première grille d'indicateurs — **1 indicateur de tête**, **6 indicateurs chapeau** pour le pilotage, **34 indicateurs unitaires** pour le diagnostic — afin de **mesurer l'état de fonctionnement réel du processus et anticiper les incidents**, au lieu de constater les pannes. Si l'approche est validée, elle sera étendue à d'autres processus métier.
+
+## 3. Méthode — deux niveaux de lecture
+
+- **Indicateurs chapeau (§5)** : répondent chacun à une question métier et portent l'alerte ; ils combinent plusieurs indicateurs unitaires.
+- **Indicateurs unitaires (§6)** : mesurent une étape précise et servent au diagnostic.
+
+Deux niveaux de mesure, applicables à chaque indicateur unitaire :
+
+| Niveau | Nature | Usage |
 |---|---|---|
-| **ERP Oracle** | Référentiel commandes, statuts, données financières | Accès direct base Oracle via un **serveur MCP Oracle** (lecture seule) |
-| **Relex** | Prévision de la demande / réapprovisionnement | **API REST** |
-| **Generix** | Échanges EDI / Supply Chain (flux fournisseurs, transporteurs) | **SOAP / EDI** |
+| Niveau 1 | État instantané (disponibilité, statut d'exécution) | Alerte |
+| Niveau 2 | Agrégat sur une période (volumes, taux, délais) | Suivi et engagements de service |
 
-L'agent Claude consomme l'accès Oracle comme un **outil MCP** (le serveur MCP Oracle expose des requêtes SQL contrôlées et restreintes en lecture), tandis que Relex et Generix sont intégrés via des connecteurs applicatifs classiques (REST / SOAP) qui alimentent le même pipeline de métriques.
+Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **niveau** (1 ou 2), une **priorité**, un **seuil d'alerte** et une **complexité d'implémentation**.
 
 ---
 
-## 3. Indicateurs de suivi (KPIs)
+## 4. Cartographie des flux inter-systèmes
 
-### 3.1 Statuts & cycle de vie des commandes
-- Répartition des commandes par statut (créée, validée, en préparation, expédiée, livrée, annulée, en erreur)
-- Commandes "stagnantes" : bloquées dans un même statut au-delà d'un seuil de temps
-- Taux de commandes annulées / modifiées après validation
+| # | Flux | Nature technique | Description | DAGs Airflow | Remarque / niveau de confiance |
+|---|---|---|---|---|---|
+| ① | O4HQ → GOLD | Batch nocturne, hors Airflow | Remontée des ventes consolidées des magasins vers GOLD (extraction CSV PostgreSQL o4hq_prod → SFTP → staging Oracle → intégration par procédure stockée). PostgreSQL et Oracle ne communiquent qu'via ce fichier CSV. | Aucun DAG identifié | **Angle mort prioritaire** : aucune alerte en cas d'échec, alors qu'il conditionne le flux ②. À instrumenter avec l'équipe GOLD. |
+| ② | GOLD → RELEX | Extraction batch | Historique de ventes et stock transmis à RELEX pour le calcul de réassort. | 28 DAGs (4 prioritaires ventes/stock : `relex-write-spool-sales-transactions-dag`, `relex-write-spool-dc-sales-transactions-dag`, `relex-write-spool-balances-dag`, `relex-write-spool-inventory-transactions-dag` ; 24 référentiel + variantes) | Supervision niveau 1 sur ventes/stock ; référentiel en niveau 2. |
+| ③ | RELEX → GOLD | API asynchrone (non confirmée) | Flux « Order Proposals » + fallback « Reserve Order Proposals ». | `relex-read-order-proposals-dag`, `relex-read-order-proposals-reserve-dag`, `relex-read-projections-forecasts-dag`, `relex-infolog-stock-dlc-dag` | ⚠ Nature non confirmée — relecture du code des 4 DAGs nécessaire avant instrumentation. |
+| ④ | GOLD → WMS | API / import fichier | Commande de réassort transmise au WMS, cut-off différencié par enseigne. | `wms-schedule-dag` (orchestrateur, 5 passages/jour : 01:00, 03:00, 05:00, 06:00, 07:00) + 9 DAGs interfaces m10→m91 | Cut-off par enseigne à confirmer dans le code. |
+| ⑤ | RELEX ↔ WMS | Flux direct SaaS↔SaaS, hors GOLD | Identifié mais **non qualifié ni instrumenté** — priorité de supervision. | `wms-relex-write-spool-m91-dag` transite en réalité par GOLD/SFTP — ce n'est pas ce flux | À qualifier avant toute supervision. |
+| ⑥ | WMS → Magasin | Flux physique | Expédition entrepôt → magasin. | Sans objet | Hors périmètre de supervision applicative. |
+| ⑦ | WMS → GOLD | Retour (à confirmer) | Confirmation d'expédition / mise à jour de stock. | `wms-write-spool-m41-dag`, `m51-dag`, `m8001-dag`, `m91-dag` | Aucun DAG dédié identifié ; inclusion au pilote à trancher. |
 
-### 3.2 Délais & SLA
-- Temps de traitement moyen par étape (validation → préparation → expédition → livraison)
-- Taux de dépassement de SLA (par étape et global)
-- Retards de livraison / traitement vs délai contractuel
+---
 
-### 3.3 Erreurs & anomalies
-- Taux d'échec par cause (paiement, stock, intégration EDI, rejet Oracle)
-- Commandes en erreur technique (échec de synchronisation ERP ↔ Relex ↔ Generix)
-- Détection de doublons
+## 5. Indicateur de tête et indicateurs chapeau
 
-### 3.4 Volume & tendances
-- Nombre de commandes par heure / jour / site
-- Détection de pics ou creux anormaux (vs moyenne mobile / période comparable)
-- Comparaison de volumes entre systèmes (cohérence Oracle vs Relex vs Generix)
-
-### 3.5 Table de synthèse
-
-| Indicateur | Source | Fréquence de calcul | Seuil d'alerte (par défaut) |
+| Question métier | Indicateur chapeau (combinaison d'unitaires) | Unitaires de diagnostic | Impact si défaillance |
 |---|---|---|---|
-| % commandes en dépassement SLA | Oracle | 5 min | > 5 % |
-| Commandes stagnantes > 4h dans un statut | Oracle | 5 min | > 10 commandes |
-| Taux d'échec technique (intégration) | Oracle + Relex + Generix | 5 min | > 2 % |
-| Écart de volume Oracle vs Relex vs Generix | Multi-source | 15 min | écart > 5 % |
-| Variation de volume horaire vs moyenne mobile 7j | Oracle | 15 min | ± 30 % |
-| Latence flux EDI Generix | Generix | 5 min | > 30 min sans accusé de réception |
-
-Les seuils sont configurables (fichier de config / variables d'environnement) et ajustables par site ou par type de commande.
+| **Le processus a-t-il bien tourné cette nuit ?** *(indicateur de tête)* | Part des magasins ayant reçu, avant le cut-off de leur enseigne, une commande de réassort exploitable = **COL-2 et CAL-4 et WMS-6 et WMS-8** | Les 6 indicateurs chapeau ci-dessous | Forte — réassort du jour compromis |
+| Les ventes de la nuit sont-elles toutes remontées ? | Collecte nocturne conforme = **COL-1 et COL-2** | COL-3, COL-4, COL-5, COL-6 (§6.1) | Forte — sans ventes, aucun besoin calculable |
+| Le calcul a-t-il produit une proposition pour chaque magasin ? | Calcul complet = **CAL-1 et CAL-4 et CAL-6** | CAL-2, CAL-3, CAL-5, CAL-7 (§6.2) | Forte — aucune commande générée pour les magasins non couverts |
+| Les propositions sont-elles devenues des commandes dans GOLD ? | Transmission intègre = **TRA-1 et TRA-4** | TRA-2, TRA-3, TRA-5 (§6.3) | Forte — propositions perdues silencieusement |
+| Les commandes partiront-elles à l'entrepôt à temps ? | Départ dans les délais = **WMS-6 et WMS-1 et WMS-8** | WMS-2, WMS-3, WMS-4, WMS-5, WMS-7 (§6.4) | Forte — livraison décalée à J+1 |
+| Un flux hors GOLD peut-il invalider ce constat ? | Couverture du flux direct = **DIR-1** | DIR-2, DIR-3 (§6.5) | Moyenne — non quantifiable tant que non qualifié |
+| La chaîne se dégrade-t-elle dans le temps ? | Tenue de la chaîne = **E2E-1 et E2E-4 et E2E-2** | E2E-3, E2E-5, CAL-5 (§6.6) | Faible à court terme, moyenne en cumulé |
 
 ---
 
-## 4. Architecture technique
+## 6. Grille des indicateurs unitaires
+
+### 6.1 Collecte des données amont (O4HQ → GOLD)
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **COL-1** — Exécution du batch nocturne O4HQ → GOLD | Technique | 1 | Haute | Le batch s'est-il exécuté et terminé dans la fenêtre nocturne ? Aucun DAG ne le supervise (flux ①). | Statut/heure de fin sur un point de contrôle à définir avec GOLD | Aucune fin de traitement à l'heure limite convenue | Élevée — aucun point de contrôle existant |
+| **COL-2** — Taux de succès de remontée O4HQ | Fonctionnel | 1 | Haute | Part des magasins ayant remonté leurs ventes à l'heure attendue. | Magasins remontés / magasins attendus, à l'heure de référence | < 100 % des magasins remontés | Moyenne |
+| **COL-3** — Latence de mise à jour du stock GOLD | Technique | 1 | Moyenne | Délai entre le mouvement de stock et son écriture dans GOLD. | Écart horodatage mouvement / écriture | À calibrer après observation | Moyenne |
+| **COL-4** — Anomalies et rejets à la collecte | Technique | 2 | Moyenne | Formats invalides, doublons, données corrompues à l'ingestion. | Nb lignes rejetées / lignes reçues, par type d'erreur | À calibrer (référence à établir) | Faible |
+| **COL-5** — Complétude des données pour le calcul RELEX | Fonctionnel | 2 | Haute | Magasins manquants ou historique trop court pour un réassort fiable. | Contrôle de complétude avant calcul RELEX | ≥ 1 magasin manquant, ou historique insuffisant | Moyenne |
+| **COL-6** — Cohérence stock GOLD vs stock physique | Fonctionnel | 2 | Basse | Écart stock système / stock réel, fausse le calcul du besoin. | Écart relatif GOLD vs stock compté, par site | Écart > tolérance métier | Élevée — dépend du plan d'inventaire |
+
+### 6.2 Calcul du besoin de réassort (RELEX)
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **CAL-1** — Disponibilité du service RELEX | Technique | 1 | Haute | Service up / dégradé / down. | API OTel RELEX | Statut ≠ « up » | Faible — API OTel disponible |
+| **CAL-2** — Durée du calcul de réassort | Technique | 1 | Moyenne | Temps d'exécution du calcul. | Durée du span, médiane | À calibrer sur durée nominale | Faible |
+| **CAL-3** — Taux d'erreur ou de timeout du calcul | Technique | 1 | Haute | Échecs techniques ou dépassements de délai. | Part d'exécutions en erreur/timeout (traces OTel) | Toute exécution en erreur/timeout | Faible |
+| **CAL-4** — Propositions générées vs attendues | Fonctionnel | 2 | Haute | Détecte un calcul partiel. | Propositions reçues / couples magasin-article attendus | Écart > tolérance métier | Moyenne |
+| **CAL-5** — Durée moyenne du calcul (période) | Technique | 2 | Moyenne | Dérive progressive de performance. | Moyenne glissante vs référence initiale | Dérive vs référence (seuil à calibrer) | Faible |
+| **CAL-6** — Taux d'activation du flux de secours | Fonctionnel | 2 | Haute | Résilience du PCA RELEX. | Nb/durée des recours au flux de secours / cycles | Toute activation | Faible |
+| **CAL-7** — Taux de propositions en anomalie fonctionnelle | Fonctionnel | 2 | Moyenne | Quantité nulle, DLC incohérente, contrainte de stock non respectée. | Part hors règles de contrôle (attributs métier à confirmer — WZM) | À définir avec le métier | Élevée — attributs métier à obtenir |
+
+### 6.3 Transmission RELEX → GOLD
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **TRA-1** — Taux de succès du flux « Order Proposals » | Technique | 1 | Haute | Propositions émises réellement reçues/acquittées. | Reçues / émises, rapprochées par cycle (3 passages/j) | Écart émis/reçu, ou passage manquant | Moyenne |
+| **TRA-2** — Latence de transmission unitaire | Technique | 1 | Moyenne | Délai émission → réception GOLD. | Écart horodatages, par message | À calibrer après observation | Moyenne |
+| **TRA-3** — Taux de rejets techniques à l'interface | Technique | 2 | Moyenne | Erreurs de mapping ou timeouts. | Nb rejets / messages reçus, par cause | À calibrer (référence à établir) | Moyenne |
+| **TRA-4** — Taux de transformation proposition → commande | Fonctionnel | 2 | Haute | Chaque proposition aboutit-elle à une commande exploitable ? | Commandes créées / propositions reçues, même cycle | < 100 % transformées sur le cycle | Moyenne |
+| **TRA-5** — Délai réception → création de commande | Fonctionnel | 2 | Basse | Fluidité du traitement métier GOLD. | Écart horodatages, médiane | À calibrer après observation | Moyenne |
+
+### 6.4 GOLD → WMS — Infolog/Generix (cut-off par enseigne)
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **WMS-1** — Taux de succès de l'import WMS | Technique | 1 | Haute | Commandes importées avec succès. | Importées / envoyées, par interface et passage | < 100 % importées sur un passage | Moyenne |
+| **WMS-2** — Disponibilité du canal d'échange GOLD → WMS | Technique | 1 | Haute | Connecteur opérationnel ? | Statut du canal + statut `wms-schedule-dag` | Échec de connexion, ou passage non exécuté | Faible — statut DAG déjà disponible |
+| **WMS-3** — Disponibilité du service WMS | Technique | 1 | Haute | WMS up / dégradé / down. | Interface à qualifier avec IDL ; à défaut, acquittements sur la fenêtre | Statut ≠ « up », ou aucun acquittement | Élevée — interface à qualifier |
+| **WMS-4** — Durée du traitement d'import côté WMS | Technique | 1 | Moyenne | Réception → intégration WMS. | Écart envoi/acquittement, par lot | À calibrer après observation | Élevée — instrumentation à obtenir |
+| **WMS-5** — Taux d'erreur ou de timeout de l'import WMS | Technique | 1 | Haute | Échecs techniques à l'import. | Part de messages en erreur/sans acquittement, par cause | Tout message en erreur/sans acquittement | Moyenne |
+| **WMS-6** — Respect des règles de cut-off par enseigne | Fonctionnel | 1 | Haute | Commande après cut-off = risque non-expédition jour même. | Heure d'émission vs cut-off enseigne | Toute commande émise après cut-off | Moyenne — paramétrage à récupérer |
+| **WMS-7** — Taux de commandes bloquées ou en attente côté WMS | Fonctionnel | 2 | Moyenne | Reçues mais non lancées en préparation. | Nb en statut bloqué/attente, à heure fixe, avec ancienneté | À définir avec l'exploitation | Moyenne |
+| **WMS-8** — Complétude des données transmises | Fonctionnel | 2 | Moyenne | Champs obligatoires manquants (BU, fournisseur, article, quantité, dates, magasin/entrepôt, ID proposition RELEX). | Part de messages avec champ manquant | Tout champ obligatoire manquant | Faible |
+
+### 6.5 Flux direct RELEX ↔ WMS (angle mort prioritaire, à instrumenter)
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **DIR-1** — Disponibilité et fiabilité du flux direct | Technique | 1 | Haute | Flux SaaS↔SaaS hors GOLD, hors supervision aujourd'hui. | Prérequis : qualifier la technologie avec RELEX (WZM) et IDL, puis statut succès/échec et délai | À définir une fois le flux qualifié | Élevée — flux non qualifié |
+| **DIR-2** — Nature et contenu des données échangées | Fonctionnel | 2 | Haute | Capacité entrepôt, créneaux, retours logistiques ? | Cartographie des échanges (émetteur, destinataire, objet, fréquence) | Sans objet (livrable de cartographie) | Moyenne — atelier RELEX/IDL |
+| **DIR-3** — Volume et fréquence du flux | Technique | 2 | Moyenne | Rythme temps réel ou batch, non qualifié à ce stade. | Nb d'échanges et volumétrie, une fois qualifié | Sans objet à ce stade | Moyenne |
+
+### 6.6 Indicateurs de bout en bout (transverses)
+
+| Indicateur | Type | Niv. | Priorité | Description | Mesure | Seuil d'alerte | Complexité |
+|---|---|---|---|---|---|---|---|
+| **E2E-1** — Lead time global (collecte → ordre WMS) | Fonctionnel | 2 | Haute | Temps entre remontée des ventes et ordre de préparation. | Écart 1er événement collecte / acquittement WMS, décomposé par étape | Dépassement de la fenêtre cible (à définir) | Élevée — corrélation inter-systèmes requise |
+| **E2E-2** — Traçabilité de l'identifiant de proposition RELEX | Technique | 1 | Haute | Une même commande suivie de RELEX à GOLD puis WMS ? | Part de commandes retrouvées avec même identifiant dans les 3 systèmes | < 100 % traçables de bout en bout | Élevée — identifiant de corrélation à mettre en place |
+| **E2E-3** — Disponibilité simultanée de RELEX, GOLD et WMS | Technique | 1 | Moyenne | Chaîne disponible dans son ensemble à l'instant T ? | Part de temps où les 3 health-checks sont simultanément OK | ≥ 1 système indisponible | Moyenne |
+| **E2E-4** — Taux de cycles nominaux sans recours au secours | Fonctionnel | 2 | Moyenne | Part des cycles sans activation du flux de secours RELEX. | Cycles sans secours / total, par période | Toute activation du flux de secours | Faible |
+| **E2E-5** — Taux d'incidents nécessitant une intervention manuelle | Fonctionnel | 2 | Haute | Incidents exigeant une intervention humaine, et à quelle étape. | Nb interventions déclarées / étape, rapporté aux cycles | À définir avec l'exploitation | Faible |
+
+---
+
+## 7. Points à clarifier avant industrialisation
+
+1. **Portée de l'API OTel RELEX** : infrastructure seule, ou attributs métier (statut de proposition, magasin, DLC) dans les spans ? À confirmer avec RELEX (WZM) — conditionne la richesse du Niveau 2.
+2. **Instrumentation GOLD** (on-premises) : pas de traçage OTel natif. À trancher : agent OTel côté serveur, ou supervision limitée aux logs applicatifs.
+3. **Instrumentation WMS** : à qualifier avec l'intégrateur IDL. Sans API de supervision, le Niveau 1 se limite aux statuts d'import côté GOLD.
+4. **Flux direct RELEX ↔ WMS** (§4, §6.5) : nature technique et contenu métier non qualifiés — **priorité n°1**, échappe entièrement à la supervision construite autour de GOLD.
+5. **Batch nocturne O4HQ → GOLD** (flux ①) : hors Airflow, sans alerte en cas d'échec — **priorité n°2**, point de contrôle à définir avec GOLD.
+6. **Corrélation trans-systèmes** : propager un identifiant de corrélation (trace ID) entre RELEX, GOLD, WMS est-il un objectif du pilote, ou se limite-t-on à des métriques par système ?
+7. **Boucle retour WMS → GOLD** (flux ⑦) : à inclure ou non dans le pilote. Sans elle, on supervise l'émission de l'ordre mais pas son exécution.
+
+---
+
+## 8. Maquette de tableau de bord (Grafana / Prometheus)
+
+Vue de pilotage en 3 blocs (valeurs fictives d'exemple) :
+
+**L'essentiel du jour**
+- Magasins servis à temps : 97,4 % (1 483/1 522, objectif 99 %)
+- Commandes parties à l'heure : 99,7 % (2 en retard)
+- Chaîne disponible : 99,2 % (aucune coupure hier)
+- Durée du cycle : 4h12 (objectif 6h)
+- Cycles sans incident : 96 % (48/50)
+- Interventions manuelles : 3 (▲ +1 vs hier, objectif 0)
+
+**Où en est la chaîne ?**
+- Remontée des ventes — Conforme (terminée à 04:41, 4 magasins à rattraper)
+- Calcul du réassort — À surveiller (1 calcul repris en secours, propositions livrées à 99 %)
+- Transmission des commandes — Conforme (3/3 envois reçus, 12 messages repris)
+- Envoi à l'entrepôt — En écart (Carrefour Hyper : 2 commandes après cut-off 06:30)
+- Échange direct hors GOLD — Non suivi (aucune mesure disponible, chantier prioritaire)
+- Si une étape s'arrête → rupture en rayon (impact fort)
+
+**Ce qui demande une décision**
+- À trancher : expédier aujourd'hui ou demain (2 commandes Carrefour Hyper)
+- À surveiller : calcul repris en secours (2 fois cette semaine)
+- À lancer : mesurer l'échange direct (aucune visibilité à ce jour)
+
+Principe : aucun code technique à l'écran — chaque tuile alimentée par les indicateurs du §6, seul le chiffre, la couleur et la décision comptent. **Seuils de couleur à calibrer après une période d'observation.**
+
+---
+
+## 9. Architecture de la solution
+
+Personne ne va chercher les indicateurs à la main : deux serveurs **MCP** donnent un accès en lecture à ce que chaque système sait de lui-même. Un **agent hébergé dans Azure** les interroge à intervalle régulier, calcule les indicateurs du §6, en déduit les indicateurs chapeau du §5 et alimente le tableau de bord du §8.
+
+Le découpage suit la frontière technique du parc : GOLD est on-premises (datacenter LabelVie), RELEX et le WMS Generix sont en SaaS. Un serveur MCP reste donc dans le datacenter LabelVie au contact de GOLD ; l'autre est déployé dans Azure, au plus près des API éditeurs. Les deux réseaux sont reliés par un **VPN site à site**.
+
+### 9.1 Composants
+
+| Composant | Emplacement | Rôle | Accès accordé |
+|---|---|---|---|
+| **Serveur MCP GOLD** | Datacenter LabelVie, on-premises | Accès à l'état des traitements GOLD : fin des batchs, tables d'interface, statuts d'import, comptages par magasin/enseigne. | Compte de service Oracle en lecture seule, sur vues dédiées |
+| **Serveur MCP RELEX et Generix** | Azure, Container Apps | Interroge les API des deux éditeurs : traces OpenTelemetry (RELEX), statuts d'import/acquittements (WMS). | Clés API dédiées supervision, portée lecture |
+| **Agent de supervision** | Azure, Container Apps | Appelle les deux serveurs MCP, calcule les indicateurs unitaires puis chapeau, publie les séries. | Identité managée Azure ; aucun accès direct aux bases ni applications |
+| **Prometheus** | Azure Monitor (service managé) | Stocke les séries temporelles, évalue les règles d'alerte. | Ingestion depuis l'agent uniquement |
+| **Grafana** | Azure (service managé) | Affiche le tableau de bord du §8, route les alertes. | Lecture seule sur Prometheus, authentification Entra ID |
+| **Liaison réseau** | VPN site à site IPsec | Relie le VNet Azure au datacenter LabelVie. | Un seul flux autorisé, Azure → serveur MCP GOLD, port unique |
+
+### 9.2 Schéma de déploiement (zones)
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Azure Container Apps                    │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │              MonitoringAgent (FastAPI)                 │  │
-│  │  ┌────────────┐  ┌────────────┐  ┌──────────────────┐ │  │
-│  │  │  Claude    │  │ Scheduler  │  │  API REST         │ │  │
-│  │  │  Agent SDK │  │ (APSched.) │  │  /health /ask     │ │  │
-│  │  │  (diagnostic│ │  polling   │  │  /metrics         │ │  │
-│  │  │  conversat.)│ │  périodique│  │                    │ │  │
-│  │  └─────┬──────┘  └─────┬──────┘  └──────────────────┘ │  │
-│  │        │               │                               │  │
-│  │  ┌─────▼───────────────▼─────────────────────────────┐ │  │
-│  │  │              Connecteurs                           │ │  │
-│  │  │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐ │ │  │
-│  │  │  │ Oracle   │  │ Relex    │  │ Generix          │ │ │  │
-│  │  │  │ (MCP,    │  │ (REST)   │  │ (SOAP/EDI)       │ │ │  │
-│  │  │  │ lecture  │  │          │  │                  │ │ │  │
-│  │  │  │ seule)   │  │          │  │                  │ │ │  │
-│  │  │  └──────────┘  └──────────┘  └──────────────────┘ │ │  │
-│  │  └─────────────────────────────────────────────────────┘ │
-│  │  ┌─────────────────────────────────────────────────────┐ │
-│  │  │        Notifieurs (Email · Microsoft Teams)          │ │
-│  │  └─────────────────────────────────────────────────────┘ │
-│  └───────────────────────────────────────────────────────┘  │
-└──────────────────────────┬────────────────────────────────┘
-                            │ /metrics (Prometheus format)
-                  ┌─────────▼─────────┐        ┌───────────────┐
-                  │   Prometheus       │───────▶│   Grafana     │
-                  │ (scrape périodique)│        │  (dashboards) │
-                  └────────────────────┘        └───────────────┘
+┌─────────────────────────┐        ┌──────────────┐        ┌───────────────────────────────┐
+│   Datacenter LabelVie    │  VPN   │              │        │             Azure               │
+│  ┌────────────────────┐ │ IPsec  │              │        │  ┌───────────────────────────┐  │
+│  │  GOLD (Oracle)      │◀┼────────┼──────────────┼───F1c──┼─▶│  Serveur MCP GOLD (relais)  │  │
+│  │  + Airflow          │ │        │              │        │  └──────────┬──────────────────┘  │
+│  └────────────────────┘ │        │  Tunnel IKEv2 │        │             │F1b                    │
+│                          │        │  ESP/AES-256  │        │  ┌──────────▼──────────────────┐  │
+└─────────────────────────┘        └──────────────┘        │  │   Agent de supervision       │  │
+                                                              │  │   (Container Apps)           │  │
+     SaaS éditeurs                                            │  └───┬──────────┬──────────┬────┘  │
+┌─────────────────────────┐                                  │      │F1a       │F2        │F4      │
+│ RELEX (OTel API)         │◀────────F0a───────────────────────┼──┐   │          │          │        │
+│ WMS Infolog/Generix      │◀────────F0b───────────────────────┼──┤   │          │          │        │
+└─────────────────────────┘                                   │  │   │  ┌───────▼──┐ ┌─────▼─────┐  │
+                                                                │  └──▶│MCP RELEX/  │ │ Prometheus │  │
+                                                                │      │Generix     │ │ (Az.Monitor)│  │
+                                                                │      └────────────┘ └─────┬──────┘  │
+                                                                │                     F3│Grafana      │
+                                                                │                            │Key Vault│
+                                                                └───────────────────────────────────────┘
 ```
 
-### 4.1 Stack technique
+*Repères F0 à F4 : flux de supervision (détail §9.3). Numéros entourés ①–⑦ : flux métier (§4).*
 
-| Couche | Technologie |
-|---|---|
-| Langage / framework | Python 3.12 + FastAPI |
-| Agent IA | Claude Agent SDK (Anthropic) |
-| Accès Oracle | Serveur MCP Oracle (lecture seule) |
-| Client REST (Relex) | `httpx` |
-| Client SOAP/EDI (Generix) | `zeep` (SOAP) + parseur EDI dédié |
-| Ordonnancement | `APScheduler` (polling périodique) |
-| Métriques | `prometheus-client` (endpoint `/metrics`) |
-| Dashboard | Grafana (scrape Prometheus) |
-| Alerting | SMTP / Microsoft Graph (Email), Webhook entrant Teams |
-| Conteneurisation | Docker |
-| Déploiement | Azure Container Apps + Azure Container Registry |
-| Secrets | Azure Key Vault (credentials Oracle, Relex, Generix, Teams, SMTP) |
-| Observabilité infra | Azure Log Analytics / Application Insights |
-| IaC | Bicep (ou Terraform) |
-| CI/CD | GitHub Actions → build image → push ACR → déploiement Container Apps |
+### 9.3 Détail technique des flux
 
-### 4.2 Déploiement Azure Container Apps
+| Flux | Sens | Protocole / port | Authentification | Format | Rythme |
+|---|---|---|---|---|---|
+| **F0a** | MCP Azure → API RELEX | HTTPS REST + OTLP, port 443 | OAuth2 client credentials + clé API supervision | JSON (REST), protobuf (spans OTLP) | À chaque appel de l'agent |
+| **F0b** | MCP Azure → API WMS Generix Infolog | HTTPS REST, port 443 *(interface à confirmer avec IDL)* | Clé API dédiée supervision | JSON ou XML selon l'interface | À chaque appel de l'agent |
+| **F1a** | Agent → MCP RELEX/Generix | HTTP/2 sur TLS 1.2+, port 443 | Jeton Entra ID (identité managée) | JSON, protocole MCP | Toutes les minutes |
+| **F1b** | Agent → MCP GOLD, via VPN | HTTPS 443, encapsulé IPsec | Jeton Entra ID + certificat serveur interne | JSON, protocole MCP | Toutes les minutes |
+| **F1c** | MCP GOLD → base Oracle GOLD | Oracle Net / TCP, port 1521 | Compte de service lecture seule, chiffrement Oracle natif à activer | Résultats SELECT sur vues dédiées | À chaque appel de l'agent |
+| **F1d** | MCP GOLD → API Airflow | HTTPS REST, port à confirmer avec GOLD | Jeton de service Airflow, lecture | JSON | À chaque appel de l'agent |
+| **F2** | Agent → Prometheus | Remote write HTTP POST sur TLS, port 443 | Jeton Entra ID | Protobuf compressé Snappy | Toutes les 60 secondes |
+| **F3** | Grafana → Prometheus | HTTPS, requêtes PromQL, port 443 | Entra ID, lecture seule | JSON | À l'affichage / évaluation des alertes |
+| **F4** | Agent → Azure Key Vault | HTTPS, port 443 | Identité managée, politique de lecture des secrets | JSON | Au démarrage et à chaque rotation de clé |
+| **Tunnel** | Datacenter LabelVie ↔ VNet Azure | IPsec IKEv2, UDP 500/4500, ESP | AES-256, clés portées par les passerelles | — | Permanent |
+| **⑤** | RELEX → WMS (hors GOLD) | Non qualifié à ce jour | Non qualifié | Non qualifié | Sans objet à ce stade |
 
-- **Container App principale** : expose l'API FastAPI (`/health`, `/metrics`, `/ask`) et exécute le scheduler de polling en tâche de fond.
-- **Azure Container Apps Jobs** (optionnel, phase 2) : exécution de collectes lourdes (rapprochement multi-source Oracle/Relex/Generix) en jobs planifiés plutôt qu'en polling in-process.
-- **Scaling** : règles KEDA basées sur la charge HTTP (dashboard/API) ; le worker de polling reste à réplique unique pour éviter les doubles collectes (verrou distribué si scale > 1).
-- **Secrets** : injectés via Azure Key Vault + références de secrets Container Apps (aucune credential en clair dans l'image ou le repo).
-- **Réseau** : accès sortant restreint aux endpoints Oracle (VPN/Private Link si ERP on-prem), Relex et Generix ; environnement Container Apps rattaché à un VNet si nécessaire pour joindre l'ERP.
+### 9.4 Cadre de sécurité — un périmètre volontairement étroit
 
----
+Un agent qui lit des systèmes de production doit être **incapable de leur nuire**, même en cas d'erreur. La supervision ne peut rien modifier ; elle ne voit que ce qui lui est explicitement ouvert.
 
-## 5. Fonctionnalités principales
+- **Lecture seule partout** : comptes de service GOLD en lecture sur vues dédiées ; clés API RELEX/Generix en portée lecture ; aucun droit d'écriture.
+- **Outils MCP limités par liste blanche** : chaque serveur n'expose que les opérations nécessaires aux indicateurs du §6, nommées une par une. Pas de requête libre, pas d'exécution de code, pas d'accès au système de fichiers.
+- **Agent sans autonomie d'action** : lit, calcule, publie des séries. Ne relance rien, ne corrige rien, n'envoie aucune commande. Toute remédiation reste une décision humaine.
+- **Cloisonnement réseau** : serveurs MCP et agent dans un VNet dédié, sans exposition publique. Le VPN n'autorise qu'un seul flux, Azure → MCP GOLD, port unique.
+- **Identités et secrets gérés** : authentification par identité managée Azure ; clés API dans Azure Key Vault, rotation régulière ; aucun secret dans le code.
+- **Garde-fous d'exécution** : délais d'attente, plafond d'appels par minute, quotas par outil — un défaut de l'agent ne doit jamais devenir une charge pour la production.
+- **Traçabilité** : chaque appel MCP journalisé (horodatage, outil, appelant, durée, volume) — traçabilité complète de ce que la supervision a lu, et quand.
 
-### 5.1 Collecte automatique
-- Polling périodique des 3 sources (fréquences différenciées par indicateur, cf. §3.5)
-- Normalisation des données en un modèle de commande unifié (`UnifiedOrder`)
-- Calcul des indicateurs et exposition au format Prometheus
-
-### 5.2 Alerting
-- Évaluation des seuils après chaque cycle de collecte
-- Envoi Email + notification Microsoft Teams (webhook) en cas de dépassement
-- Anti-spam : regroupement des alertes similaires, cooldown configurable
-
-### 5.3 Dashboard Grafana
-- Vue globale : volumes, statuts, SLA par système et par site
-- Vue par système source (Oracle / Relex / Generix) avec statut de synchronisation
-- Historique des alertes déclenchées
-
-### 5.4 Agent conversationnel (diagnostic)
-- Endpoint `/ask` : question en langage naturel sur l'état des commandes
-- L'agent (Claude Agent SDK) interroge l'outil MCP Oracle et les connecteurs Relex/Generix pour construire une réponse contextualisée
-- Cas d'usage : diagnostic de blocage, explication d'un pic d'erreurs, résumé quotidien
+> Cette architecture ne corrige rien : elle rend le processus lisible et déclenche la bonne alerte au bon moment. L'action reste du ressort de l'exploitation et du métier.
 
 ---
 
-## 6. Sécurité et conformité
+## 10. Prochaines étapes
 
-- Accès Oracle strictement **lecture seule** via MCP (pas d'écriture possible depuis l'agent)
-- Credentials stockés exclusivement dans Azure Key Vault
-- HTTPS obligatoire sur l'API exposée
-- Logs sans données personnelles/sensibles (masquage des données client dans les logs)
-- Traçabilité des alertes envoyées (audit trail)
-
----
-
-## 7. Structure du répertoire
-
-```
-MonitoringAgent/
-├── specs.md
-├── src/
-│   ├── agent/            # Intégration Claude Agent SDK, logique de diagnostic
-│   ├── connectors/
-│   │   ├── oracle_mcp.py
-│   │   ├── relex_rest.py
-│   │   └── generix_soap_edi.py
-│   ├── metrics/           # Calcul des indicateurs + exporteur Prometheus
-│   ├── alerting/
-│   │   ├── email_notifier.py
-│   │   └── teams_notifier.py
-│   ├── api/                # Routes FastAPI (/health, /metrics, /ask)
-│   ├── scheduler/          # Polling périodique (APScheduler)
-│   └── config/
-├── infra/                  # Bicep/Terraform (Container Apps, ACR, Key Vault, Log Analytics)
-├── docker/
-│   ├── Dockerfile
-│   └── docker-compose.yml  # app + prometheus + grafana (environnement local)
-├── tests/
-└── .github/workflows/       # CI/CD build + push ACR + déploiement Container Apps
-```
+- [ ] Trancher les 7 points de clarification du §7 avec les équipes GOLD, RELEX (WZM) et l'intégrateur IDL
+- [ ] Qualifier techniquement le flux direct RELEX ↔ WMS (§6.5) — priorité n°1
+- [ ] Définir le point de contrôle du batch nocturne O4HQ → GOLD (§6.1, COL-1) — priorité n°2
+- [ ] Développer le serveur MCP GOLD (liste blanche d'outils sur vues Oracle dédiées)
+- [ ] Développer le serveur MCP RELEX/Generix (Container Apps)
+- [ ] Développer l'agent de supervision (calcul unitaires → chapeau → publication Prometheus)
+- [ ] Calibrer les seuils marqués « à calibrer après observation » sur une période pilote
+- [ ] Construire le tableau de bord Grafana (§8) et les règles d'alerte
 
 ---
 
-## 8. Roadmap
-
-### Phase 1 — MVP (collecte + alerting de base)
-- [ ] Connecteur Oracle via MCP (lecture seule) — indicateurs statuts & SLA
-- [ ] Connecteur Relex (REST) — indicateurs volume
-- [ ] Connecteur Generix (SOAP/EDI) — indicateurs erreurs/latence EDI
-- [ ] Exposition `/metrics` (Prometheus) + endpoint `/health`
-- [ ] Alerting Email + Teams sur seuils par défaut
-- [ ] Dockerfile + déploiement manuel sur Azure Container Apps
-
-### Phase 2 — Dashboard & fiabilisation
-- [ ] Dashboards Grafana (global, par système, historique alertes)
-- [ ] IaC Bicep/Terraform complet (ACA, ACR, Key Vault, Log Analytics)
-- [ ] CI/CD GitHub Actions (build/push/déploiement automatisé)
-- [ ] Rapprochement multi-source (cohérence Oracle/Relex/Generix) en Azure Container Apps Job
-
-### Phase 3 — Agent conversationnel
-- [ ] Endpoint `/ask` avec Claude Agent SDK
-- [ ] Diagnostic assisté (corrélation multi-source sur incident)
-- [ ] Résumé quotidien automatique envoyé par email/Teams
-
-### Phase 4 — Industrialisation
-- [ ] Seuils d'alerte configurables par site/type de commande
-- [ ] Scaling KEDA + verrou distribué pour le scheduler
-- [ ] Tests de charge et audit sécurité
-
----
-
-## 9. Indicateurs de performance de l'agent lui-même
-
-| Indicateur | Cible |
-|---|---|
-| Latence de détection d'une anomalie | < 5 min après occurrence |
-| Disponibilité de l'agent | 99,5 % |
-| Taux de faux positifs sur les alertes | < 10 % |
-| Fraîcheur des données (âge max des métriques exposées) | < 15 min |
-
----
-
-*Document de spécifications — MonitoringAgent — Version 1.0 — Août 2026*
+*Document de spécifications — MonitoringAgent — Version 1.1 — Août 2026*
+*Source : Note d'Architecture — Métriques de supervision Order Management, LabelVie / Pôle TECH, V1.0, 28/07/2026.*
