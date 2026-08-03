@@ -203,6 +203,12 @@ variable "prometheus_storage_quota_gb" {
   default     = 50
 }
 
+variable "github_actions_principal_id" {
+  description = "Object ID of the Azure AD app registration used by the GitHub Actions CI/CD pipeline (see CI-CD.md) to push images to ACR. Empty skips the role assignment — fine for the first bootstrap apply, before the app registration exists."
+  type        = string
+  default     = ""
+}
+
 variable "allowed_ip_ranges_for_grafana" {
   description = "CIDR ranges allowed to reach the public Grafana endpoint (empty = no extra restriction beyond Entra ID auth)"
   type        = list(string)

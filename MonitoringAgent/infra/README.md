@@ -1,5 +1,7 @@
 # Infra — Azure Container Apps + couche de sécurité
 
+> Ce document décrit l'usage manuel de Terraform (`terraform apply` en local). Pour le pipeline automatisé (GitHub Actions, OIDC, backend distant), voir [`../CI-CD.md`](../CI-CD.md).
+
 Provisionne tout ce qui, dans `specs.md §9`, vit dans **Azure** : l'environnement Container Apps, `mcp-relex-generix`, l'agent, Prometheus, Grafana, plus la couche sécurité (réseau, Key Vault, identités, VPN, journalisation). **`mcp_gold` n'est pas provisionné ici** : il doit être déployé on-premises dans le datacenter LabelVie (voir `../README.md`).
 
 ## Couche de sécurité incluse

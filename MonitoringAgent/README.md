@@ -1,12 +1,13 @@
 # MonitoringAgent
 
-Supervision du processus Order Management LabelVie (O4HQ → GOLD → RELEX → GOLD → WMS Infolog/Generix). Voir [`specs.md`](./specs.md) pour la grille complète des indicateurs et l'architecture cible, et [`DEPLOYMENT.md`](./DEPLOYMENT.md) pour la marche à suivre complète, étape par étape, du test local jusqu'au passage en production.
+Supervision du processus Order Management LabelVie (O4HQ → GOLD → RELEX → GOLD → WMS Infolog/Generix). Voir [`specs.md`](./specs.md) pour la grille complète des indicateurs et l'architecture cible, [`DEPLOYMENT.md`](./DEPLOYMENT.md) pour la marche à suivre manuelle étape par étape, et [`CI-CD.md`](./CI-CD.md) pour le pipeline GitHub Actions qui automatise ce déploiement.
 
 ## Structure
 
 ```
 MonitoringAgent/
 ├── specs.md
+├── CI-CD.md                       # pipeline GitHub Actions (.github/workflows/ à la racine du dépôt)
 ├── libs/ordermgmt_common/        # modèles Pydantic partagés (IndicatorResult, ChapeauResult)
 ├── services/
 │   ├── mcp_gold/                 # serveur MCP GOLD (Oracle, on-prem) — lecture seule

@@ -2,6 +2,8 @@
 
 Ce document explique, étape par étape, comment déployer tout le projet : d'abord en local (mode stub, sans aucun accès aux vrais systèmes), puis sur Azure, puis en connectant les vraies sources (GOLD, RELEX, Generix). Il complète `README.md` (vue d'ensemble) et `infra/README.md` (détails Terraform).
 
+> Les étapes 2 à 4 (build, push, apply) décrites ici sont manuelles — utile pour le tout premier déploiement (bootstrap) et pour comprendre ce qui se passe. Une fois le bootstrap fait, **`CI-CD.md`** automatise ces mêmes étapes via GitHub Actions à chaque `git push`.
+
 ---
 
 ## Arborescence complète du projet
@@ -86,6 +88,15 @@ MonitoringAgent/
     ├── test_indicators_unitaires.py
     ├── test_indicators_chapeau.py
     └── test_connectors_stub.py
+```
+
+Le pipeline CI/CD (GitHub Actions) vit à la racine du dépôt, pas dans `MonitoringAgent/` — GitHub n'y cherche que là :
+
+```
+.github/workflows/
+├── tests.yml            # Compile-check + pytest, sur chaque PR
+├── terraform-plan.yml   # `terraform plan` commenté sur les PR touchant infra/
+└── deploy-azure.yml     # Build+push des images, puis `terraform apply` — voir CI-CD.md
 ```
 
 ---

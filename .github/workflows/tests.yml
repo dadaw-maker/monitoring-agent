@@ -1,0 +1,36 @@
+name: Tests
+
+# Quality gate before anything gets built/deployed — no Azure credentials
+# needed, so this runs on every PR regardless of who opened it.
+on:
+  pull_request:
+    paths:
+      - "MonitoringAgent/**"
+  push:
+    branches: [main]
+    paths:
+      - "MonitoringAgent/**"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MonitoringAgent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r services/agent/requirements.txt -r tests/requirements.txt
+
+      - name: Compile-check all services
+        run: |
+          python -m py_compile $(find . -name "*.py" -not -path "./tests/*")
+
+      - name: Run tests
+        run: PYTHONPATH=tests python -m pytest tests/ -v

@@ -48,3 +48,14 @@ resource "azurerm_role_assignment" "kv_secrets_user" {
   role_definition_name = "Key Vault Secrets User"
   principal_id         = each.value.principal_id
 }
+
+# AcrPush (not Contributor, not the ACR admin account) for the GitHub Actions
+# CI/CD pipeline — the least privilege it needs to build and push the 3
+# service images (CI-CD.md). Skipped on the very first bootstrap apply, when
+# the app registration doesn't exist yet (var.github_actions_principal_id = "").
+resource "azurerm_role_assignment" "acr_push_github_actions" {
+  count                = var.github_actions_principal_id != "" ? 1 : 0
+  scope                = azurerm_container_registry.this.id
+  role_definition_name = "AcrPush"
+  principal_id         = var.github_actions_principal_id
+}
