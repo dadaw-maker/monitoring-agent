@@ -24,7 +24,54 @@ az storage container create -n tfstate --account-name stordermgmttfstate
 
 (Adapter les noms si `stordermgmttfstate` est déjà pris ailleurs — les noms de comptes de stockage Azure sont globalement uniques.)
 
-## Étape B — Créer l'App Registration (identité fédérée GitHub)
+## Étape B — Créer l'identité fédérée GitHub
+
+Deux façons d'obtenir la même chose (une identité qu'Azure accepte de faire confier à un jeton GitHub) — choisir celle qui correspond à vos droits.
+
+### Option 1 — Identité managée affectée par l'utilisateur (recommandé si vous n'avez pas de droits Entra ID)
+
+Une *User-Assigned Managed Identity* est une ressource Azure comme une autre (au même titre qu'un compte de stockage) : elle se crée avec un rôle **Contributor** classique sur un resource group, **sans avoir besoin d'un rôle d'administrateur d'annuaire Entra ID** (contrairement à un App Registration, qui nécessite le rôle *Application Developer* ou davantage). Elle supporte l'identité fédérée OIDC exactement de la même façon.
+
+```bash
+az group create -n rg-ordermgmt-identity -l francecentral
+
+az identity create --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity
+
+CLIENT_ID=$(az identity show --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity --query clientId -o tsv)
+PRINCIPAL_ID=$(az identity show --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity --query principalId -o tsv)
+TENANT_ID=$(az account show --query tenantId -o tsv)
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+
+echo "AZURE_CLIENT_ID=$CLIENT_ID"
+echo "AZURE_CLIENT_OBJECT_ID=$PRINCIPAL_ID"
+echo "AZURE_TENANT_ID=$TENANT_ID"
+echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
+
+OWNER_REPO="dadaw-maker/monitoring-agent"   # à adapter si le dépôt est renommé à nouveau
+
+az identity federated-credential create \
+  --name github-azure-production-environment \
+  --identity-name github-ordermgmt-deploy \
+  --resource-group rg-ordermgmt-identity \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:${OWNER_REPO}:environment:azure-production" \
+  --audiences "api://AzureADTokenExchange"
+
+az identity federated-credential create \
+  --name github-pull-requests \
+  --identity-name github-ordermgmt-deploy \
+  --resource-group rg-ordermgmt-identity \
+  --issuer "https://token.actions.githubusercontent.com" \
+  --subject "repo:${OWNER_REPO}:pull_request" \
+  --audiences "api://AzureADTokenExchange"
+
+az role assignment create --assignee "$PRINCIPAL_ID" --role "Contributor" --scope "/subscriptions/$SUBSCRIPTION_ID"
+az role assignment create --assignee "$PRINCIPAL_ID" --role "User Access Administrator" --scope "/subscriptions/$SUBSCRIPTION_ID"
+```
+
+Si même `az group create` / `az identity create` échoue par manque de droits : demandez à la personne qui gère l'abonnement Azure de lancer exactement ce bloc de commandes (ou de vous créer un resource group où vous avez Contributor), puis de vous communiquer les 4 valeurs `AZURE_*` affichées par les `echo` — c'est tout ce dont vous avez besoin ensuite, aucun accès Azure permanent n'est requis pour la suite.
+
+### Option 2 — App Registration (si vous avez les droits Entra ID)
 
 ```bash
 APP_ID=$(az ad app create --display-name "github-ordermgmt-deploy" --query appId -o tsv)
@@ -37,12 +84,8 @@ echo "AZURE_CLIENT_ID=$APP_ID"
 echo "AZURE_CLIENT_OBJECT_ID=$SP_OBJECT_ID"
 echo "AZURE_TENANT_ID=$TENANT_ID"
 echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
-```
 
-Deux identifiants de fédération sont nécessaires — un par forme de jeton que GitHub émet selon le workflow (voir tableau ci-dessus) :
-
-```bash
-OWNER_REPO="dadaw-maker/monitoring-agent"   # à adapter si le dépôt est renommé à nouveau
+OWNER_REPO="dadaw-maker/monitoring-agent"
 
 az ad app federated-credential create --id "$APP_ID" --parameters '{
   "name": "github-azure-production-environment",
@@ -57,16 +100,16 @@ az ad app federated-credential create --id "$APP_ID" --parameters '{
   "subject": "repo:'"$OWNER_REPO"':pull_request",
   "audiences": ["api://AzureADTokenExchange"]
 }'
-```
 
-Droits (à ajuster selon votre politique — voir note ci-dessous) :
-
-```bash
 az role assignment create --assignee "$APP_ID" --role "Contributor" --scope "/subscriptions/$SUBSCRIPTION_ID"
 az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/$SUBSCRIPTION_ID"
 ```
 
+### Dans les deux cas
+
 > `User Access Administrator` est nécessaire parce que Terraform crée lui-même des `azurerm_role_assignment` (identités managées → Key Vault, ACR...). Pour un scope plus étroit qu'une souscription entière : créer le resource group `rg-ordermgmt-<env>` manuellement, importer-le dans le state Terraform (`terraform import azurerm_resource_group.this <id>`), et scoper les deux rôles ci-dessus sur ce resource group au lieu de la souscription.
+>
+> `azure/login` (dans `deploy-azure.yml`/`terraform-plan.yml`) et `ARM_CLIENT_ID`/`ARM_USE_OIDC` (pour Terraform) fonctionnent à l'identique que `AZURE_CLIENT_ID` désigne une identité managée ou un App Registration — aucune modification des workflows n'est nécessaire selon l'option choisie.
 
 ## Étape C — Configurer GitHub : variables et secrets du dépôt
 
