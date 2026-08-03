@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and fill in. Anything left "changeme" stays a
+# harmless placeholder — flip GOLD_MODE/RELEX_MODE/GENERIX_MODE to "live"
+# only once real credentials have been set directly in Key Vault.
+
+project     = "ordermgmt"
+environment = "dev"
+location    = "francecentral"
+
+# --- Networking to the LabelVie datacenter ---
+onprem_address_space         = "10.100.0.0/16"
+onprem_vpn_gateway_public_ip = "203.0.113.10"
+mcp_gold_onprem_host         = "mcp-gold.labelvie.internal"
+mcp_gold_port                = 8001
+vpn_shared_key                = "changeme"
+deploy_vpn_gateway            = true
+
+# --- Images ---
+image_tag = "latest"
+
+# --- Connector modes ---
+gold_mode     = "stub"
+relex_mode    = "stub"
+generix_mode  = "stub"
+
+# --- Security ---
+enable_defender_for_cloud     = false
+enable_nsg_flow_logs           = false
+allowed_ip_ranges_for_grafana  = []
