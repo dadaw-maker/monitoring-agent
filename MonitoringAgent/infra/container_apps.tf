@@ -195,15 +195,35 @@ resource "azurerm_container_app" "prometheus" {
       cpu    = 0.5
       memory = "1Gi"
 
+      # Rétention explicite : par défaut Prometheus ne garde que 15 jours.
+      # prometheus_retention_days détermine combien de temps en arrière on
+      # peut "revoir les indicateurs d'une certaine période" dans Grafana.
+      args = [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus",
+        "--storage.tsdb.retention.time=${var.prometheus_retention_days}d",
+        "--web.console.libraries=/usr/share/prometheus/console_libraries",
+        "--web.console.templates=/usr/share/prometheus/consoles",
+      ]
+
       volume_mounts {
         name = "config"
         path = "/etc/prometheus"
+      }
+      volume_mounts {
+        name = "data"
+        path = "/prometheus"
       }
     }
 
     volume {
       name         = "config"
       storage_name = azurerm_container_app_environment_storage.prometheus_config.name
+      storage_type = "AzureFile"
+    }
+    volume {
+      name         = "data"
+      storage_name = azurerm_container_app_environment_storage.prometheus_data.name
       storage_type = "AzureFile"
     }
   }

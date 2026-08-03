@@ -191,6 +191,18 @@ variable "log_analytics_retention_days" {
   default = 90
 }
 
+variable "prometheus_retention_days" {
+  description = "How long Prometheus keeps the historized indicator metrics (so past periods can be reviewed in Grafana)."
+  type        = number
+  default     = 400
+}
+
+variable "prometheus_storage_quota_gb" {
+  description = "Quota (GiB) of the Azure File share backing Prometheus' persistent TSDB storage."
+  type        = number
+  default     = 50
+}
+
 variable "allowed_ip_ranges_for_grafana" {
   description = "CIDR ranges allowed to reach the public Grafana endpoint (empty = no extra restriction beyond Entra ID auth)"
   type        = list(string)

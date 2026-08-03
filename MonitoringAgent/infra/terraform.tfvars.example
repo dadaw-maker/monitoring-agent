@@ -27,6 +27,12 @@ generix_mode  = "stub"
 # entrant). "changeme" déploie avec l'alerte Teams inactive.
 teams_webhook_url = "changeme"
 
+# --- Historisation des indicateurs ---
+# Combien de temps Prometheus garde l'historique (permet de "revoir les
+# indicateurs d'une certaine période" dans Grafana). Défaut : 400 jours.
+prometheus_retention_days   = 400
+prometheus_storage_quota_gb = 50
+
 # --- Security ---
 enable_defender_for_cloud     = false
 enable_nsg_flow_logs           = false

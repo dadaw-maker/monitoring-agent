@@ -47,8 +47,19 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Durée de rétention de l'historique des indicateurs (specs.md — "revoir
+      # les indicateurs d'une certaine période"). 90 jours par défaut en local.
+      - "--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_DAYS:-90}d"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Volume nommé Docker : les données survivent à un `docker compose down`
+      # / `up --build` (contrairement au système de fichiers du conteneur).
+      - prometheus_data:/prometheus
     depends_on:
       - agent
     ports:
@@ -70,3 +81,6 @@ services:
       - prometheus
     ports:
       - "3000:3000"
+
+volumes:
+  prometheus_data:

@@ -1,7 +1,12 @@
-# Azure Files shares mounted into the Prometheus and Grafana container apps
-# to carry their config (monitoring/prometheus/prometheus.yml and
-# monitoring/grafana/provisioning/**) — content is pushed straight from this
-# repo so the dashboard/scrape config in Azure always matches what's in git.
+# Azure Files shares mounted into the Prometheus and Grafana container apps.
+# Two purposes:
+#  - config shares (read-only): monitoring/prometheus/prometheus.yml and
+#    monitoring/grafana/provisioning/** are pushed straight from this repo,
+#    so the scrape config / dashboards / alert rules in Azure always match
+#    what's in git.
+#  - the "prometheus-data" share (read-write): Prometheus' actual TSDB, so
+#    the historized indicator values survive a Container App revision
+#    restart/redeploy — see PROMETHEUS_RETENTION_DAYS / prometheus_retention_days.
 
 resource "azurerm_storage_account" "monitoring" {
   name                           = "st${substr(replace(local.prefix, "-", ""), 0, 14)}${random_id.suffix.hex}"
@@ -44,6 +49,14 @@ resource "azurerm_storage_share" "grafana_provisioning" {
   name                 = "grafana-provisioning"
   storage_account_name = azurerm_storage_account.monitoring.name
   quota                = 1
+}
+
+# Read-write, unlike the two config shares above — this is where Prometheus
+# actually writes its time-series blocks + WAL.
+resource "azurerm_storage_share" "prometheus_data" {
+  name                 = "prometheus-data"
+  storage_account_name = azurerm_storage_account.monitoring.name
+  quota                = var.prometheus_storage_quota_gb
 }
 
 resource "azurerm_storage_share_file" "prometheus_yml" {
@@ -110,4 +123,13 @@ resource "azurerm_container_app_environment_storage" "grafana_provisioning" {
   share_name                   = azurerm_storage_share.grafana_provisioning.name
   access_key                   = azurerm_storage_account.monitoring.primary_access_key
   access_mode                  = "ReadOnly"
+}
+
+resource "azurerm_container_app_environment_storage" "prometheus_data" {
+  name                         = "prometheus-data"
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  account_name                 = azurerm_storage_account.monitoring.name
+  share_name                   = azurerm_storage_share.prometheus_data.name
+  access_key                   = azurerm_storage_account.monitoring.primary_access_key
+  access_mode                  = "ReadWrite"
 }

@@ -31,6 +31,10 @@ docker compose up --build
 - MCP GOLD : http://localhost:8001 (protocole MCP, pas un site web classique)
 - MCP RELEX/Generix : http://localhost:8002
 
+### Historique des indicateurs
+
+Prometheus persiste son historique dans un volume (Docker nommé en local, Azure File share en production — `infra/storage.tf`), avec une rétention configurable (`PROMETHEUS_RETENTION_DAYS` en local, `prometheus_retention_days` en Terraform ; 400 jours par défaut en Azure). L'historique survit donc à un redémarrage/redéploiement, et peut être revu sur n'importe quelle période via le sélecteur de plage temporelle de Grafana ou une requête PromQL avec `[Xd]`.
+
 ### Alerte Teams
 
 Grafana route les alertes vers Teams (specs.md §9.1) via `monitoring/grafana/provisioning/alerting/` (point de contact, politique de notification, règles sur l'indicateur de tête, les indicateurs chapeau et les échecs de collecte de l'agent). Renseigner `TEAMS_WEBHOOK_URL` dans `.env` (local) ou le secret Key Vault `teams-webhook-url` (Azure) — voir DEPLOYMENT.md.

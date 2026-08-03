@@ -74,7 +74,7 @@ MonitoringAgent/
 │   ├── acr.tf                        # Crée le registre d'images Docker (Azure Container Registry)
 │   ├── keyvault.tf                   # Crée le coffre-fort à secrets (mots de passe, clés API)
 │   ├── identity.tf                   # Crée une "identité" par service Azure, pour qu'il puisse s'authentifier sans mot de passe
-│   ├── storage.tf                    # Crée le stockage de fichiers qui contient la config Prometheus/Grafana
+│   ├── storage.tf                    # Stockage de fichiers : config Prometheus/Grafana (lecture seule) + données Prometheus (lecture-écriture, persistance de l'historique)
 │   ├── container_apps.tf             # Crée les 4 applications Azure (agent, mcp-relex-generix, Prometheus, Grafana)
 │   ├── monitoring.tf                 # Crée le suivi des journaux (Log Analytics) et les options de sécurité avancées
 │   ├── outputs.tf                    # Affiche les informations utiles après le déploiement (URL Grafana, nom de l'ACR...)
