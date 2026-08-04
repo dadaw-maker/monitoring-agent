@@ -1,13 +1,19 @@
 # Container Registry — no admin user, pull-only access granted via managed
-# identity + RBAC (specs.md §9.4 "identités et secrets gérés").
-
+# identity + RBAC (specs.md §9.4 "identités et secrets gérés"). Access
+# control here is identity-based (RBAC), not network-based: both the
+# deploy-azure.yml build-and-push job (GitHub-hosted runner) and the
+# az acr build bootstrap (CI-CD.md/azure-deployment.md) reach the registry
+# over the public endpoint, since neither runs inside this VNet — a private
+# endpoint alone (public_network_access_enabled = false) would lock both
+# out. The private endpoint below still gives Container Apps a private path
+# from inside the VNet; it just isn't the only path in.
 resource "azurerm_container_registry" "this" {
   name                          = "acr${replace(local.prefix, "-", "")}${random_id.suffix.hex}"
   resource_group_name           = azurerm_resource_group.this.name
   location                      = azurerm_resource_group.this.location
   sku                           = "Premium" # required for private endpoints
   admin_enabled                 = false
-  public_network_access_enabled = false
+  public_network_access_enabled = true
   tags                          = local.tags
 }
 

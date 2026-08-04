@@ -12,9 +12,9 @@ Provisionne tout ce qui, dans `specs.md §9`, vit dans **Azure** : l'environneme
 | VPN | Site-à-site IPsec/IKEv2 vers le datacenter LabelVie (`azurerm_virtual_network_gateway` + `azurerm_local_network_gateway`) |
 | Identités | Une identité managée par service Azure, aucune identité partagée |
 | Autorisations | RBAC least-privilege : `AcrPull` et `Key Vault Secrets User` uniquement, jamais `Contributor`/`Owner` |
-| Secrets | Key Vault RBAC-only, purge protection, soft-delete 90j, réseau public désactivé, private endpoint |
-| Registre | ACR Premium, admin désactivé, private endpoint, token scope-map dédié pour le pull on-prem de `mcp_gold` |
-| Stockage | Compte de stockage (config Prometheus/Grafana) sans accès public, private endpoint |
+| Secrets | Key Vault RBAC-only, purge protection, soft-delete 90j, private endpoint (chemin privé pour les Container Apps) + accès public activé — le déployeur (Cloud Shell, runner GitHub Actions) n'est pas dans le VNet, donc l'accès est contrôlé par RBAC, pas par isolation réseau |
+| Registre | ACR Premium, admin désactivé, private endpoint + accès public activé (même raison), token scope-map dédié pour le pull on-prem de `mcp_gold` |
+| Stockage | Compte de stockage (config Prometheus/Grafana) : private endpoint + accès public activé (même raison — Terraform y écrit les fichiers de config depuis l'extérieur du VNet) |
 | Traçabilité | Log Analytics + diagnostic settings sur Key Vault et ACR (§9.4 "qu'a lu la supervision, et quand ?") |
 | Ingress | Tout est interne sauf Grafana (seul point d'entrée externe, restreignable par CIDR) |
 | Défense en profondeur (optionnel) | Microsoft Defender for Cloud (Key Vault, ACR) et NSG flow logs, activables via variables |

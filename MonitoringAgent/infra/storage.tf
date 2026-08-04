@@ -14,7 +14,12 @@ resource "azurerm_storage_account" "monitoring" {
   location                       = azurerm_resource_group.this.location
   account_tier                   = "Standard"
   account_replication_type       = "LRS"
-  public_network_access_enabled  = false
+  # Terraform itself uploads the Prometheus/Grafana config files (below) from
+  # outside the VNet (Cloud Shell bootstrap, GitHub-hosted runner) — same
+  # reasoning as acr.tf/keyvault.tf: access control is RBAC/key-based here,
+  # not network-based. The private endpoint still gives Container Apps a
+  # private path from inside the VNet.
+  public_network_access_enabled  = true
   min_tls_version                = "TLS1_2"
   tags                            = local.tags
 }

@@ -1,6 +1,12 @@
-# RBAC-authorized, network-locked Key Vault. Every credential the Azure-hosted
-# services need is a secret here — never an env var literal, never in the
-# repo (specs.md §9.4).
+# RBAC-authorized Key Vault. Every credential the Azure-hosted services need
+# is a secret here — never an env var literal, never in the repo (specs.md
+# §9.4). Access control is identity-based (RBAC — Key Vault Administrator
+# for the deployer, Key Vault Secrets User for each app identity), not
+# network-based: Terraform itself writes the initial secrets from outside
+# the VNet (Cloud Shell for the bootstrap, a GitHub-hosted runner for
+# deploy-azure.yml), so public_network_access_enabled = false would lock
+# the deployer out along with everyone else. The private endpoint below
+# still gives Container Apps a private path from inside the VNet.
 
 data "azurerm_client_config" "current" {}
 
@@ -13,10 +19,10 @@ resource "azurerm_key_vault" "this" {
   enable_rbac_authorization     = true
   purge_protection_enabled      = true
   soft_delete_retention_days    = 90
-  public_network_access_enabled = false
+  public_network_access_enabled = true
 
   network_acls {
-    default_action = "Deny"
+    default_action = "Allow"
     bypass         = "AzureServices"
   }
 

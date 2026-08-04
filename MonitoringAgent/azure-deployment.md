@@ -36,6 +36,16 @@ Suivi concret du bootstrap CI/CD pour **ce** déploiement (valeurs réelles, pas
 - [ ] **Bloc 6** — `terraform apply` complet
 - [ ] Vérification : dashboard Grafana accessible, données stub visibles
 
+### Correctif appliqué en cours de route : accès réseau ACR/Key Vault/stockage
+
+`az acr build` a échoué avec *"client with IP ... is not allowed access"* : l'ACR était configuré avec `public_network_access_enabled = false` (accès uniquement via private endpoint), incompatible avec un déployeur externe au VNet (Cloud Shell, ou plus tard les runners GitHub Actions). Débloqué en live avec :
+
+```bash
+az acr update --name acrordermgmtdeva4e111 --public-network-enabled true
+```
+
+Le même problème aurait touché le Key Vault et le compte de stockage Prometheus/Grafana au Bloc 6 (Terraform y écrit aussi des données depuis l'extérieur du VNet) — corrigé dans `infra/acr.tf`, `infra/keyvault.tf` et `infra/storage.tf` avant que ça n'arrive : les trois passent à `public_network_access_enabled = true`, la sécurité restant assurée par le RBAC (pas d'accès anonyme, pas de compte admin) plutôt que par l'isolation réseau. Les private endpoints restent en place pour donner aux Container Apps un chemin privé depuis l'intérieur du VNet.
+
 ---
 
 ## Étape F — Premier bootstrap (Cloud Shell)
