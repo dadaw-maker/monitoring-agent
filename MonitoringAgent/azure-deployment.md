@@ -17,7 +17,55 @@ Suivi concret du bootstrap CI/CD pour **ce** déploiement (valeurs réelles, pas
 | Environnement GitHub | `azure-production` |
 | ACR (registre d'images), créé au Bloc 4 | `acrordermgmtdeva4e111` (`.azurecr.io`) |
 
-> ⚠️ **Si le Cloud Shell se déconnecte/redémarre**, il repart dans `~` (`/home/<toi>`), sans mémoire des `cd` précédents — le dépôt cloné reste sur le disque persistant de Cloud Shell mais il faut y retourner : `cd ~/monitoring-agent/MonitoringAgent`. Vérifier avec `pwd` avant de relancer une commande si le moindre doute.
+> ⚠️ **Si le Cloud Shell se déconnecte/redémarre**, il repart dans `~` (`/home/<toi>`), sans mémoire des `cd` précédents ni des variables shell (`$ACR`). Le dépôt cloné devrait rester sur le disque persistant de Cloud Shell, mais dans le doute vérifier avec `ls ~` avant de relancer une commande.
+
+## Bloc 0 — à refaire à chaque nouvelle session Cloud Shell
+
+Avant de reprendre n'importe quel autre bloc, ce bloc remet tout en état (sans risque de le rejouer même si rien n'a été perdu — il ne fait qu'écraser des fichiers locaux avec le même contenu et ré-initialiser Terraform sur le même state distant) :
+
+```bash
+az account show || az login   # si erreur AAD/login, relancer "az login" à la main
+
+cd ~/monitoring-agent/MonitoringAgent || {
+  cd ~
+  git clone https://github.com/dadaw-maker/monitoring-agent.git
+  cd monitoring-agent
+  git checkout claude/agent-azure-container-order-management-qf4arn
+  cd MonitoringAgent
+}
+
+ACR=acrordermgmtdeva4e111
+
+cd infra
+
+cat > backend.hcl <<'EOF'
+resource_group_name  = "lbv-rg-monitoring-agent-ordermgnt"
+storage_account_name = "stordermgmttfstate"
+container_name        = "tfstate"
+key                    = "ordermgmt.tfstate"
+EOF
+
+cat > terraform.tfvars <<'EOF'
+project              = "ordermgmt"
+environment           = "dev"
+location              = "westeurope"
+resource_group_name   = "lbv-rg-monitoring-agent-ordermgnt"
+
+deploy_vpn_gateway            = false
+onprem_address_space          = "10.100.0.0/16"
+onprem_vpn_gateway_public_ip  = "203.0.113.10"
+mcp_gold_onprem_host          = "mcp-gold.labelvie.internal"
+vpn_shared_key                 = "changeme"
+
+gold_mode     = "stub"
+relex_mode    = "stub"
+generix_mode  = "stub"
+EOF
+
+terraform init -backend-config=backend.hcl
+```
+
+Après ce bloc : `cd ..` pour revenir à `MonitoringAgent/` avant un `az acr build` (`$ACR` est déjà défini), ou rester dans `infra/` pour un `terraform plan`/`apply`.
 
 ## État d'avancement
 
