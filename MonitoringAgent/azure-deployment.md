@@ -15,6 +15,9 @@ Suivi concret du bootstrap CI/CD pour **ce** déploiement (valeurs réelles, pas
 | GitHub Organization ID (numérique) | `270965870` |
 | GitHub Repository ID (numérique) | `1191809919` |
 | Environnement GitHub | `azure-production` |
+| ACR (registre d'images), créé au Bloc 4 | `acrordermgmtdeva4e111` (`.azurecr.io`) |
+
+> ⚠️ **Si le Cloud Shell se déconnecte/redémarre**, il repart dans `~` (`/home/<toi>`), sans mémoire des `cd` précédents — le dépôt cloné reste sur le disque persistant de Cloud Shell mais il faut y retourner : `cd ~/monitoring-agent/MonitoringAgent`. Vérifier avec `pwd` avant de relancer une commande si le moindre doute.
 
 ## État d'avancement
 
@@ -26,9 +29,11 @@ Suivi concret du bootstrap CI/CD pour **ce** déploiement (valeurs réelles, pas
   - Rôle **User Access Administrator** sur `lbv-rg-monitoring-agent-ordermgnt` (a nécessité que l'admin élargisse la condition de délégation sur son propre rôle, ou fasse l'attribution lui-même — bloqué un moment sur ce point)
 - [x] **Étape C** — Variables GitHub créées (`Settings → Secrets and variables → Actions → Variables`) : `AZURE_CLIENT_ID`, `AZURE_CLIENT_OBJECT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `TF_BACKEND_RESOURCE_GROUP`, `TF_BACKEND_STORAGE_ACCOUNT`, `TF_BACKEND_CONTAINER`, `TF_BACKEND_KEY`
 - [x] **Étape D** — Environnement GitHub `azure-production` créé
-- [ ] **Étape F** — Premier bootstrap Terraform + images (en cours, voir ci-dessous)
-- [ ] Variable GitHub `ACR_LOGIN_SERVER` (viendra après le premier `apply` partiel)
-- [ ] `terraform apply` complet
+- [x] **Bloc 1-3** — Dépôt cloné, `terraform.tfvars` créé, resource group importé (*"Import successful!"*)
+- [x] **Bloc 4** — Apply partiel fait (resource group + ACR `acrordermgmtdeva4e111` + Key Vault créés)
+- [x] Variable GitHub `ACR_LOGIN_SERVER` = `acrordermgmtdeva4e111.azurecr.io`
+- [ ] **Bloc 5** — Build + push des 3 images via `az acr build` (en cours)
+- [ ] **Bloc 6** — `terraform apply` complet
 - [ ] Vérification : dashboard Grafana accessible, données stub visibles
 
 ---
@@ -105,19 +110,28 @@ terraform output container_registry_login_server
 
 ⚠️ Cloud Shell ne peut pas faire tourner de démon Docker (`docker build`/`docker push` échouent avec *"This command requires running the docker daemon, which is not supported in Azure Cloud Shell"*). On utilise **`az acr build`** à la place : le build se fait directement sur les serveurs de l'ACR, sans Docker local, et pousse l'image dans le même mouvement.
 
+Se placer d'abord dans `MonitoringAgent/` (pas `infra/`) — vérifier avec `pwd` :
+
 ```bash
-cd ../..   # revenir à MonitoringAgent/ depuis infra/
-ACR=$(terraform -chdir=infra output -raw container_registry_login_server | cut -d. -f1)
+cd ~/monitoring-agent/MonitoringAgent   # ajuster si besoin, cf. pwd
+```
+
+Le nom de l'ACR est déjà connu (table en haut de ce document) — pas besoin de le recalculer dynamiquement :
+
+```bash
+ACR=acrordermgmtdeva4e111
 
 az acr build --registry "$ACR" --image agent:latest --file services/agent/Dockerfile .
 az acr build --registry "$ACR" --image mcp-gold:latest --file services/mcp_gold/Dockerfile .
 az acr build --registry "$ACR" --image mcp-relex-generix:latest --file services/mcp_relex_generix/Dockerfile .
 ```
 
+⚠️ Le `.` tout seul à la fin de chaque ligne est un argument obligatoire (le répertoire à envoyer pour le build), pas de la ponctuation — facile à perdre au copier-coller. Si `az acr build` se plaint de `<SOURCE_LOCATION>` manquant, c'est lui qu'il manque.
+
 ### Bloc 6 — apply complet
 
 ```bash
-cd infra
+cd ~/monitoring-agent/MonitoringAgent/infra   # ajuster si besoin, cf. pwd
 terraform apply
 ```
 
