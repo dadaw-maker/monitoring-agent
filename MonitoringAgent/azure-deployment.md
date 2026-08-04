@@ -2,6 +2,28 @@
 
 Suivi concret du bootstrap CI/CD pour **ce** déploiement (valeurs réelles, pas génériques — le guide générique reste [`CI-CD.md`](./CI-CD.md)). Tout se fait depuis le **Cloud Shell Azure** (portal.azure.com → icône Cloud Shell).
 
+## En résumé, pour tout le monde
+
+Ce document raconte comment on branche un projet (le code sur GitHub) sur Azure, pour qu'à chaque mise à jour du code, l'application se redéploie **toute seule**, sans qu'on ait à s'en occuper à la main. La première fois, il faut poser quelques fondations manuellement — ensuite, c'est automatique.
+
+Voici les grandes étapes, dans l'ordre, en langage simple :
+
+1. **Un endroit pour se souvenir de ce qui a été créé.** L'outil qu'on utilise pour construire l'infrastructure sur Azure (Terraform) doit noter quelque part ce qu'il a déjà mis en place, pour ne pas tout recréer à chaque fois. On lui a donné un petit espace de stockage dédié à ça (un "compte de stockage").
+
+2. **Une carte d'identité pour que GitHub puisse parler à Azure, sans mot de passe.** Pour que GitHub puisse créer des choses dans Azure automatiquement, il faut qu'Azure sache "faire confiance" à GitHub. On a créé une identité technique (`github-ordermgmt-deploy`) et on lui a donné le droit d'agir dans Azure, mais seulement pour ce projet précis et seulement quand la demande vient bien de notre dépôt GitHub — jamais de mot de passe stocké nulle part.
+
+3. **Prévenir GitHub où stocker ces informations.** Les identifiants créés à l'étape 2 (et quelques réglages techniques) ont été enregistrés dans les paramètres du dépôt GitHub, pour que le robot de déploiement (GitHub Actions) puisse les utiliser automatiquement plus tard.
+
+4. **Un coffre pour ranger les images de l'application.** Le code de l'application doit être "empaqueté" (comme une boîte prête à l'emploi, appelée une "image") avant de pouvoir tourner dans Azure. Ces boîtes sont rangées dans un registre dédié (l'ACR), qu'on a créé et qu'on a dû ajuster une fois pour que les bons outils puissent y déposer des images.
+
+5. **Construire et déposer les premières boîtes.** On a construit les 3 "boîtes" de l'application (l'agent de supervision, et les deux connecteurs vers les systèmes GOLD et RELEX/Generix) et on les a déposées dans le registre créé à l'étape 4.
+
+6. **Faire tourner le tout dans Azure.** Une dernière commande crée le reste : le réseau, le coffre à secrets (mots de passe, clés), et les 4 applications qui tournent réellement (l'agent, le connecteur RELEX/Generix, Prometheus qui stocke l'historique des indicateurs, et Grafana qui affiche le tableau de bord).
+
+Une fois ces 6 étapes faites une bonne fois, on n'a plus besoin d'y retoucher : à chaque fois que du code est modifié sur GitHub, tout se reconstruit et se redéploie automatiquement.
+
+*Le reste du document est la version technique, avec les commandes exactes — utile pour reprendre où on s'est arrêté, ou pour tout refaire depuis le début si besoin. N'hésite pas à modifier ce texte au fil de l'eau si quelque chose change.*
+
 ## Valeurs de ce déploiement
 
 | Élément | Valeur |
