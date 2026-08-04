@@ -21,11 +21,13 @@ resource "azurerm_container_app_environment" "this" {
 # --------------------------------------------------------------------------
 
 resource "azurerm_container_app" "mcp_relex_generix" {
-  name                         = "ca-${local.prefix}-mcp-relex-generix"
+  name                         = "ca-${local.prefix}-relex-generix" # "mcp-" dropped: Azure Container App names are capped at 32 chars
   container_app_environment_id = azurerm_container_app_environment.this.id
   resource_group_name          = azurerm_resource_group.this.name
   revision_mode                = "Single"
   tags                          = local.tags
+
+  depends_on = [time_sleep.wait_for_kv_rbac] # let the Key Vault Secrets User grant propagate first
 
   identity {
     type         = "UserAssigned"
@@ -250,6 +252,8 @@ resource "azurerm_container_app" "grafana" {
   resource_group_name          = azurerm_resource_group.this.name
   revision_mode                = "Single"
   tags                          = local.tags
+
+  depends_on = [time_sleep.wait_for_kv_rbac] # let the Key Vault Secrets User grant propagate first
 
   identity {
     type         = "UserAssigned"

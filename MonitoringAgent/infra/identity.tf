@@ -49,6 +49,17 @@ resource "azurerm_role_assignment" "kv_secrets_user" {
   principal_id         = each.value.principal_id
 }
 
+# Azure RBAC role assignments are eventually consistent — Container Apps can
+# fail to provision a revision ("Unable to get value using Managed identity
+# ... timeout after 5s") if it tries to resolve a Key Vault secret reference
+# seconds after the role was granted, before the permission has propagated.
+# container_apps.tf makes mcp_relex_generix/grafana depend on this so their
+# revision isn't provisioned until the grant has had time to take effect.
+resource "time_sleep" "wait_for_kv_rbac" {
+  depends_on      = [azurerm_role_assignment.kv_secrets_user]
+  create_duration = "90s"
+}
+
 # AcrPush (not Contributor, not the ACR admin account) for the GitHub Actions
 # CI/CD pipeline — the least privilege it needs to build and push the 3
 # service images (CI-CD.md). Skipped on the very first bootstrap apply, when
