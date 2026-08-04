@@ -4,7 +4,13 @@
 
 project     = "ordermgmt"
 environment = "dev"
-location    = "francecentral"
+location    = "westeurope"
+
+# Adopte un resource group déjà existant au lieu d'en créer un nouveau.
+# Nécessite `terraform import azurerm_resource_group.this <resource-id>`
+# avant le premier apply (voir CI-CD.md) — sinon Terraform tente de créer
+# un groupe qui existe déjà et échoue.
+resource_group_name = "lbv-rg-monitoring-agent-ordermgnt"
 
 # --- Networking to the LabelVie datacenter ---
 onprem_address_space         = "10.100.0.0/16"

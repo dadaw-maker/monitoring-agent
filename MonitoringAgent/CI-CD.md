@@ -10,35 +10,34 @@ Trois workflows, dans `.github/workflows/` (à la racine du dépôt, pas dans `M
 
 Authentification par **OIDC (identité fédérée)** : aucun mot de passe ni secret Azure long-lived n'est stocké dans GitHub — un jeton GitHub à courte durée de vie est échangé contre un jeton Azure au moment de l'exécution.
 
+Ce guide part d'un **resource group déjà existant** — `lbv-rg-monitoring-agent-ordermgnt` (West Europe) — plutôt que d'en faire créer un nouveau par ces commandes. Tout (état Terraform, identité CI, infra applicative) y vit, ce qui évite d'avoir besoin de droits de création de resource group au niveau de l'abonnement : tout ce qui suit ne demande que le rôle **Contributor** (+ **User Access Administrator**) sur ce seul resource group.
+
 ---
 
 ## Étape A — Bootstrapper le backend Terraform (état distant)
 
-Terraform a besoin d'un endroit pour stocker son état, séparé de l'infra qu'il gère (un backend ne peut pas se créer lui-même). À faire une seule fois, avec `az` en local ou en Cloud Shell :
+Terraform a besoin d'un endroit pour stocker son état, séparé de l'infra qu'il gère. À faire une seule fois, avec `az` en local ou en Cloud Shell :
 
 ```bash
-az group create -n rg-ordermgmt-tfstate -l francecentral
-az storage account create -n stordermgmttfstate -g rg-ordermgmt-tfstate -l francecentral --sku Standard_LRS
+RG="lbv-rg-monitoring-agent-ordermgnt"
+
+az storage account create -n stordermgmttfstate -g "$RG" -l westeurope --sku Standard_LRS
 az storage container create -n tfstate --account-name stordermgmttfstate
 ```
 
-(Adapter les noms si `stordermgmttfstate` est déjà pris ailleurs — les noms de comptes de stockage Azure sont globalement uniques.)
+(Adapter `stordermgmttfstate` s'il est déjà pris ailleurs — les noms de comptes de stockage Azure sont globalement uniques. Pas besoin de `az group create` : on réutilise `$RG`.)
 
 ## Étape B — Créer l'identité fédérée GitHub
 
-Deux façons d'obtenir la même chose (une identité qu'Azure accepte de faire confier à un jeton GitHub) — choisir celle qui correspond à vos droits.
-
-### Option 1 — Identité managée affectée par l'utilisateur (recommandé si vous n'avez pas de droits Entra ID)
-
-Une *User-Assigned Managed Identity* est une ressource Azure comme une autre (au même titre qu'un compte de stockage) : elle se crée avec un rôle **Contributor** classique sur un resource group, **sans avoir besoin d'un rôle d'administrateur d'annuaire Entra ID** (contrairement à un App Registration, qui nécessite le rôle *Application Developer* ou davantage). Elle supporte l'identité fédérée OIDC exactement de la même façon.
+Une *User-Assigned Managed Identity* est une ressource Azure comme une autre : elle se crée avec un rôle **Contributor** classique sur un resource group, **sans avoir besoin d'un rôle d'administrateur d'annuaire Entra ID** (contrairement à un App Registration, qui nécessite le rôle *Application Developer* ou davantage côté Entra ID). Elle supporte l'identité fédérée OIDC exactement de la même façon.
 
 ```bash
-az group create -n rg-ordermgmt-identity -l francecentral
+RG="lbv-rg-monitoring-agent-ordermgnt"
 
-az identity create --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity
+az identity create --name github-ordermgmt-deploy --resource-group "$RG"
 
-CLIENT_ID=$(az identity show --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity --query clientId -o tsv)
-PRINCIPAL_ID=$(az identity show --name github-ordermgmt-deploy --resource-group rg-ordermgmt-identity --query principalId -o tsv)
+CLIENT_ID=$(az identity show --name github-ordermgmt-deploy --resource-group "$RG" --query clientId -o tsv)
+PRINCIPAL_ID=$(az identity show --name github-ordermgmt-deploy --resource-group "$RG" --query principalId -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 SUBSCRIPTION_ID=$(az account show --query id -o tsv)
 
@@ -52,7 +51,7 @@ OWNER_REPO="dadaw-maker/monitoring-agent"   # à adapter si le dépôt est renom
 az identity federated-credential create \
   --name github-azure-production-environment \
   --identity-name github-ordermgmt-deploy \
-  --resource-group rg-ordermgmt-identity \
+  --resource-group "$RG" \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:${OWNER_REPO}:environment:azure-production" \
   --audiences "api://AzureADTokenExchange"
@@ -60,56 +59,21 @@ az identity federated-credential create \
 az identity federated-credential create \
   --name github-pull-requests \
   --identity-name github-ordermgmt-deploy \
-  --resource-group rg-ordermgmt-identity \
+  --resource-group "$RG" \
   --issuer "https://token.actions.githubusercontent.com" \
   --subject "repo:${OWNER_REPO}:pull_request" \
   --audiences "api://AzureADTokenExchange"
 
-az role assignment create --assignee "$PRINCIPAL_ID" --role "Contributor" --scope "/subscriptions/$SUBSCRIPTION_ID"
-az role assignment create --assignee "$PRINCIPAL_ID" --role "User Access Administrator" --scope "/subscriptions/$SUBSCRIPTION_ID"
+RG_SCOPE="/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG"
+az role assignment create --assignee "$PRINCIPAL_ID" --role "Contributor" --scope "$RG_SCOPE"
+az role assignment create --assignee "$PRINCIPAL_ID" --role "User Access Administrator" --scope "$RG_SCOPE"
 ```
 
-Si même `az group create` / `az identity create` échoue par manque de droits : demandez à la personne qui gère l'abonnement Azure de lancer exactement ce bloc de commandes (ou de vous créer un resource group où vous avez Contributor), puis de vous communiquer les 4 valeurs `AZURE_*` affichées par les `echo` — c'est tout ce dont vous avez besoin ensuite, aucun accès Azure permanent n'est requis pour la suite.
+Les rôles sont scopés au resource group (`$RG_SCOPE`), pas à toute la souscription — cohérent avec le fait que vos propres droits sont probablement, eux aussi, scopés à ce resource group plutôt qu'à la souscription entière.
 
-### Option 2 — App Registration (si vous avez les droits Entra ID)
-
-```bash
-APP_ID=$(az ad app create --display-name "github-ordermgmt-deploy" --query appId -o tsv)
-az ad sp create --id "$APP_ID"
-SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
-TENANT_ID=$(az account show --query tenantId -o tsv)
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-
-echo "AZURE_CLIENT_ID=$APP_ID"
-echo "AZURE_CLIENT_OBJECT_ID=$SP_OBJECT_ID"
-echo "AZURE_TENANT_ID=$TENANT_ID"
-echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
-
-OWNER_REPO="dadaw-maker/monitoring-agent"
-
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-azure-production-environment",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:'"$OWNER_REPO"':environment:azure-production",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-
-az ad app federated-credential create --id "$APP_ID" --parameters '{
-  "name": "github-pull-requests",
-  "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:'"$OWNER_REPO"':pull_request",
-  "audiences": ["api://AzureADTokenExchange"]
-}'
-
-az role assignment create --assignee "$APP_ID" --role "Contributor" --scope "/subscriptions/$SUBSCRIPTION_ID"
-az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/$SUBSCRIPTION_ID"
-```
-
-### Dans les deux cas
-
-> `User Access Administrator` est nécessaire parce que Terraform crée lui-même des `azurerm_role_assignment` (identités managées → Key Vault, ACR...). Pour un scope plus étroit qu'une souscription entière : créer le resource group `rg-ordermgmt-<env>` manuellement, importer-le dans le state Terraform (`terraform import azurerm_resource_group.this <id>`), et scoper les deux rôles ci-dessus sur ce resource group au lieu de la souscription.
+> `User Access Administrator` est nécessaire parce que Terraform crée lui-même des `azurerm_role_assignment` (identités managées de l'agent/mcp-relex-generix/grafana → Key Vault, ACR...) — toutes scopées à des ressources qui vivent dans `$RG`, donc le rôle scopé au resource group suffit.
 >
-> `azure/login` (dans `deploy-azure.yml`/`terraform-plan.yml`) et `ARM_CLIENT_ID`/`ARM_USE_OIDC` (pour Terraform) fonctionnent à l'identique que `AZURE_CLIENT_ID` désigne une identité managée ou un App Registration — aucune modification des workflows n'est nécessaire selon l'option choisie.
+> Si même `az identity create` échoue par manque de droits : demandez à la personne qui gère l'abonnement/le resource group de lancer exactement ce bloc, puis de vous communiquer les 4 valeurs `AZURE_*` affichées par les `echo` — c'est tout ce dont vous avez besoin ensuite, aucun accès Azure permanent n'est requis pour la suite.
 
 ## Étape C — Configurer GitHub : variables et secrets du dépôt
 
@@ -117,15 +81,15 @@ az role assignment create --assignee "$APP_ID" --role "User Access Administrator
 
 | Nom | Valeur |
 |---|---|
-| `AZURE_CLIENT_ID` | sortie de l'étape B |
-| `AZURE_CLIENT_OBJECT_ID` | sortie de l'étape B (`SP_OBJECT_ID`) |
+| `AZURE_CLIENT_ID` | sortie de l'étape B (`$CLIENT_ID`) |
+| `AZURE_CLIENT_OBJECT_ID` | sortie de l'étape B (`$PRINCIPAL_ID`) |
 | `AZURE_TENANT_ID` | sortie de l'étape B |
 | `AZURE_SUBSCRIPTION_ID` | sortie de l'étape B |
-| `TF_BACKEND_RESOURCE_GROUP` | `rg-ordermgmt-tfstate` |
+| `TF_BACKEND_RESOURCE_GROUP` | `lbv-rg-monitoring-agent-ordermgnt` |
 | `TF_BACKEND_STORAGE_ACCOUNT` | `stordermgmttfstate` |
 | `TF_BACKEND_CONTAINER` | `tfstate` |
 | `TF_BACKEND_KEY` | `ordermgmt.tfstate` |
-| `ACR_LOGIN_SERVER` | voir Étape E (n'existe qu'après le tout premier apply) |
+| `ACR_LOGIN_SERVER` | voir Étape F (n'existe qu'après le tout premier apply) |
 
 **Settings → Secrets and variables → Actions → Secrets** (sensibles — correspondent aux variables Terraform du même nom en minuscules, voir `infra/variables.tf`) :
 
@@ -137,20 +101,40 @@ Tous ont un défaut (`changeme` ou `stub`) dans `infra/variables.tf` — inutile
 
 **Settings → Environments → New environment** → nommer `azure-production`. Ajouter des **required reviewers** pour transformer le déploiement automatique (push sur `main`) en déploiement avec approbation manuelle — recommandé avant de connecter de vraies sources RELEX/GOLD/Generix.
 
-## Étape E — Premier bootstrap (une fois, en partie manuel)
+## Étape E — Adopter le resource group existant dans `terraform.tfvars`
 
-`deploy-azure.yml` a besoin d'`ACR_LOGIN_SERVER` pour savoir où pousser les images — qui n'existe qu'après un premier `terraform apply`. Poule et œuf classique : la toute première fois se fait donc à la main (voir `DEPLOYMENT.md` étapes 2-4), puis on bascule sur le pipeline pour tous les déploiements suivants :
+```bash
+# MonitoringAgent/infra/terraform.tfvars
+project              = "ordermgmt"
+environment           = "dev"
+location              = "westeurope"
+resource_group_name   = "lbv-rg-monitoring-agent-ordermgnt"
+```
+
+(déjà pré-rempli ainsi dans `terraform.tfvars.example` — copier vers `terraform.tfvars` et compléter le reste : `onprem_address_space`, `onprem_vpn_gateway_public_ip`, `mcp_gold_onprem_host`, `vpn_shared_key`.)
+
+## Étape F — Premier bootstrap (une fois, en partie manuel)
+
+`deploy-azure.yml` a besoin d'`ACR_LOGIN_SERVER` pour savoir où pousser les images — qui n'existe qu'après un premier `terraform apply`. Poule et œuf classique : la toute première fois se fait donc à la main, puis on bascule sur le pipeline pour tous les déploiements suivants.
+
+Comme `lbv-rg-monitoring-agent-ordermgnt` existe déjà en dehors de Terraform, il faut d'abord le lui faire "adopter" (`terraform import`) avant tout `apply` — sinon Terraform tente de le *créer* et échoue avec "resource already exists" :
 
 ```bash
 cd MonitoringAgent/infra
 terraform init -backend-config=backend.hcl   # cf. backend.hcl.example
+
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+terraform import azurerm_resource_group.this \
+  "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/lbv-rg-monitoring-agent-ordermgnt"
+
 terraform apply -target=azurerm_resource_group.this -target=azurerm_container_registry.this -target=azurerm_key_vault.this
 
 # noter le nom de l'ACR pour la variable GitHub ACR_LOGIN_SERVER
 terraform output container_registry_login_server
 
 # construire/pousser les 3 images une première fois (voir DEPLOYMENT.md étape 3)
-# puis :
+# puis, une fois AZURE_CLIENT_OBJECT_ID renseigné côté GitHub (Étape C) pour
+# que le rôle AcrPush du pipeline soit bien créé :
 terraform apply
 ```
 
@@ -170,6 +154,7 @@ Une fois `ACR_LOGIN_SERVER` renseigné dans les variables GitHub (Étape C), tou
 | Symptôme | Piste |
 |---|---|
 | `azure/login` échoue avec une erreur AADSTS70021 (no matching federated identity) | Le `subject` du federated credential ne correspond pas exactement à ce que GitHub envoie — vérifier que le job utilise bien `environment: azure-production` (ou aucun environment, pour le cas `pull_request`) |
+| `terraform apply` échoue avec "A resource with the ID ... already exists" sur le resource group | L'import de l'Étape F n'a pas été fait — relancer `terraform import azurerm_resource_group.this ...` |
 | `terraform init` échoue sur le backend | Vérifier les 4 variables `TF_BACKEND_*` et que le compte de stockage/conteneur de l'Étape A existent |
 | `az acr login` échoue (403) | Le rôle `AcrPush` n'a pas été accordé — vérifier que `AZURE_CLIENT_OBJECT_ID` est bien renseigné et qu'un `terraform apply` a tourné après (résout `azurerm_role_assignment.acr_push_github_actions` dans `infra/identity.tf`) |
 | Le job `terraform-apply` ne se lance jamais | L'environnement `azure-production` attend une approbation (Étape D) — normal si des reviewers sont configurés |

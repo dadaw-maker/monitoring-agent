@@ -8,7 +8,7 @@ resource "random_id" "suffix" {
 }
 
 resource "azurerm_resource_group" "this" {
-  name     = "rg-${local.prefix}"
+  name     = var.resource_group_name != "" ? var.resource_group_name : "rg-${local.prefix}"
   location = var.location
   tags     = local.tags
 }

@@ -13,7 +13,13 @@ variable "environment" {
 variable "location" {
   description = "Azure region"
   type        = string
-  default     = "francecentral"
+  default     = "westeurope"
+}
+
+variable "resource_group_name" {
+  description = "Name of an existing resource group to adopt instead of letting Terraform name/create a new one. Leave empty to fall back to \"rg-<project>-<environment>\". If set, `terraform import azurerm_resource_group.this <resource-id>` before the first apply (see CI-CD.md) so Terraform manages the existing group instead of trying to create a duplicate."
+  type        = string
+  default     = ""
 }
 
 variable "tags" {
