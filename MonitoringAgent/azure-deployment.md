@@ -53,16 +53,9 @@ EOF
 terraform init -backend-config=backend.hcl
 ```
 
-### Bloc 2 — adopter le resource group existant dans le state Terraform
+### Bloc 2 — fichier de variables (mode stub, VPN Gateway désactivé pour ce premier déploiement)
 
-```bash
-SUBSCRIPTION_ID=$(az account show --query id -o tsv)
-terraform import azurerm_resource_group.this "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/lbv-rg-monitoring-agent-ordermgnt"
-```
-
-Doit se terminer par *"Import successful!"*.
-
-### Bloc 3 — fichier de variables (mode stub, VPN Gateway désactivé pour ce premier déploiement)
+⚠️ **À faire avant le Bloc 3** : `terraform import` charge toute la configuration et a donc besoin de connaître les variables obligatoires (`mcp_gold_onprem_host`, `onprem_address_space`, `onprem_vpn_gateway_public_ip`, `vpn_shared_key`) — sans ce fichier, il les demande une par une en interactif.
 
 Le vrai GOLD n'est pas encore connecté à ce stade (`GOLD_MODE=stub`) — inutile de provisionner le VPN Gateway (le plus long et le plus coûteux à créer) tout de suite. Les valeurs `onprem_*`/`vpn_shared_key` ci-dessous sont des **placeholders**, à remplacer le jour où GOLD est réellement raccordé et `deploy_vpn_gateway` repassé à `true`.
 
@@ -84,6 +77,15 @@ relex_mode    = "stub"
 generix_mode  = "stub"
 EOF
 ```
+
+### Bloc 3 — adopter le resource group existant dans le state Terraform
+
+```bash
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+terraform import azurerm_resource_group.this "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/lbv-rg-monitoring-agent-ordermgnt"
+```
+
+Doit se terminer par *"Import successful!"*.
 
 ### Bloc 4 — premier apply partiel (juste de quoi pousser des images)
 
