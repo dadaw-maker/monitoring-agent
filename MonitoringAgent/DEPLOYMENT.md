@@ -165,6 +165,8 @@ terraform output container_registry_login_server
 
 **Ce que ça fait** : transforme le code Python de chaque service en image Docker, et l'envoie dans le registre Azure créé à l'étape 2, pour qu'Azure puisse ensuite la faire tourner.
 
+**Avec Docker local** (poste de travail, CI avec Docker disponible) :
+
 ```bash
 ACR=$(terraform -chdir=infra output -raw container_registry_login_server)
 az acr login --name "${ACR%%.*}"
@@ -177,6 +179,17 @@ docker build -f services/mcp_relex_generix/Dockerfile   -t "$ACR/mcp-relex-gener
 docker push "$ACR/agent:latest"
 docker push "$ACR/mcp-gold:latest"
 docker push "$ACR/mcp-relex-generix:latest"
+```
+
+**Sans Docker local — depuis Azure Cloud Shell notamment**, qui ne peut pas faire tourner de démon Docker (*"This command requires running the docker daemon, which is not supported in Azure Cloud Shell"*) : utiliser `az acr build`, qui construit l'image directement sur les serveurs de l'ACR et la pousse dans le même mouvement, sans Docker local du tout.
+
+```bash
+ACR_NAME=$(terraform -chdir=infra output -raw container_registry_login_server | cut -d. -f1)
+
+cd ..  # revenir à MonitoringAgent/
+az acr build --registry "$ACR_NAME" --image agent:latest              --file services/agent/Dockerfile .
+az acr build --registry "$ACR_NAME" --image mcp-gold:latest           --file services/mcp_gold/Dockerfile .
+az acr build --registry "$ACR_NAME" --image mcp-relex-generix:latest  --file services/mcp_relex_generix/Dockerfile .
 ```
 
 > `mcp-gold` sera poussé ici pour être ensuite récupéré par le serveur **on-premises** (étape 5) — il ne tourne jamais dans Azure Container Apps (voir architecture, `specs.md §9`).

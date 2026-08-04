@@ -103,18 +103,15 @@ terraform output container_registry_login_server
 
 ### Bloc 5 — construire et pousser les 3 images une première fois
 
+⚠️ Cloud Shell ne peut pas faire tourner de démon Docker (`docker build`/`docker push` échouent avec *"This command requires running the docker daemon, which is not supported in Azure Cloud Shell"*). On utilise **`az acr build`** à la place : le build se fait directement sur les serveurs de l'ACR, sans Docker local, et pousse l'image dans le même mouvement.
+
 ```bash
-ACR=$(terraform output -raw container_registry_login_server)
-az acr login --name "${ACR%%.*}"
+cd ../..   # revenir à MonitoringAgent/ depuis infra/
+ACR=$(terraform -chdir=infra output -raw container_registry_login_server | cut -d. -f1)
 
-cd ../..   # revenir à MonitoringAgent/
-docker build -f services/agent/Dockerfile              -t "$ACR/agent:latest"             .
-docker build -f services/mcp_gold/Dockerfile            -t "$ACR/mcp-gold:latest"          .
-docker build -f services/mcp_relex_generix/Dockerfile   -t "$ACR/mcp-relex-generix:latest" .
-
-docker push "$ACR/agent:latest"
-docker push "$ACR/mcp-gold:latest"
-docker push "$ACR/mcp-relex-generix:latest"
+az acr build --registry "$ACR" --image agent:latest --file services/agent/Dockerfile .
+az acr build --registry "$ACR" --image mcp-gold:latest --file services/mcp_gold/Dockerfile .
+az acr build --registry "$ACR" --image mcp-relex-generix:latest --file services/mcp_relex_generix/Dockerfile .
 ```
 
 ### Bloc 6 — apply complet
