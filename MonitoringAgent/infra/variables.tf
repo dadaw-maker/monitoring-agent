@@ -43,7 +43,7 @@ variable "vnet_address_space" {
 variable "aca_subnet_prefix" {
   description = "Subnet delegated to the Container Apps environment"
   type        = string
-  default     = "10.20.1.0/23"
+  default     = "10.20.0.0/23" # /23 must start on an even boundary (10.20.0.0, 10.20.2.0, ...)
 }
 
 variable "private_endpoints_subnet_prefix" {
