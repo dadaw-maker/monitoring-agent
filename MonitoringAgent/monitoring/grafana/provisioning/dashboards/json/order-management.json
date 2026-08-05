@@ -93,8 +93,8 @@
     },
     {
       "type": "state-timeline",
-      "title": "Historique — indicateur de tête",
-      "description": "Ajuste la période avec le sélecteur de dates en haut à droite pour revoir un jour ou un cycle précédent.",
+      "title": "Historique — un état par jour",
+      "description": "Le pire statut rencontré ce jour-là : bien tourné / repris à la main / pas tourné. Ajuste la période avec le sélecteur de dates en haut à droite pour revoir plus loin.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus_ordermgmt"
@@ -107,7 +107,8 @@
       },
       "targets": [
         {
-          "expr": "order_mgmt_chapeau_status{code=\"TETE\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"TETE\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Tête"
         }
       ],
@@ -118,20 +119,28 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "Conforme",
+                  "text": "Bien tourné",
                   "color": "green"
-                },
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
                 "1": {
-                  "text": "À surveiller",
+                  "text": "Tourné avec reprises manuelles",
                   "color": "orange"
-                },
-                "2": {
-                  "text": "En écart",
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 2,
+                "to": 3,
+                "result": {
+                  "text": "Pas tourné",
                   "color": "red"
-                },
-                "3": {
-                  "text": "Non suivi",
-                  "color": "grey"
                 }
               }
             }
@@ -572,8 +581,8 @@
     },
     {
       "type": "state-timeline",
-      "title": "Historique — les 6 étapes",
-      "description": "Une bande par étape, même ordre que ci-dessus. Repère où et quand une étape a viré orange ou rouge.",
+      "title": "Historique — un état par jour, par étape",
+      "description": "Une bande par étape, même ordre que ci-dessus, un seul état par jour (bien tourné / repris à la main / pas tourné).",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus_ordermgmt"
@@ -586,27 +595,33 @@
       },
       "targets": [
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-COLLECTE\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-COLLECTE\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "1. Remontée des ventes"
         },
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-CALCUL\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-CALCUL\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "2. Calcul du réassort"
         },
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-TRANSMISSION\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-TRANSMISSION\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "3. Transmission des commandes"
         },
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-DEPART-ENTREPOT\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-DEPART-ENTREPOT\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "4. Envoi à l'entrepôt"
         },
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-FLUX-DIRECT\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-FLUX-DIRECT\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "5. Échange direct hors GOLD"
         },
         {
-          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-TENUE-CHAINE\"}",
+          "expr": "max_over_time((order_mgmt_chapeau_status{code=\"CHAPEAU-TENUE-CHAINE\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "6. Tenue de la chaîne"
         }
       ],
@@ -617,20 +632,28 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "Conforme",
+                  "text": "Bien tourné",
                   "color": "green"
-                },
+                }
+              }
+            },
+            {
+              "type": "value",
+              "options": {
                 "1": {
-                  "text": "À surveiller",
+                  "text": "Tourné avec reprises manuelles",
                   "color": "orange"
-                },
-                "2": {
-                  "text": "En écart",
+                }
+              }
+            },
+            {
+              "type": "range",
+              "options": {
+                "from": 2,
+                "to": 3,
+                "result": {
+                  "text": "Pas tourné",
                   "color": "red"
-                },
-                "3": {
-                  "text": "Non suivi",
-                  "color": "grey"
                 }
               }
             }
@@ -778,28 +801,84 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "Historique — commandes après cut-off et recours au flux de secours",
+      "type": "barchart",
+      "title": "Historique — commandes après cut-off, par jour",
+      "description": "Le plus grand nombre de commandes en attente de décision atteint chaque jour.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus_ordermgmt"
       },
       "gridPos": {
         "h": 6,
-        "w": 24,
+        "w": 12,
         "x": 0,
         "y": 33
       },
       "targets": [
         {
-          "expr": "order_mgmt_dashboard_essentiel{metric=\"wms_orders_late\"}",
+          "expr": "max_over_time(order_mgmt_dashboard_essentiel{metric=\"wms_orders_late\"}[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Commandes après cut-off"
-        },
-        {
-          "expr": "order_mgmt_indicator_value{code=\"CAL-6\"}",
-          "legendFormat": "% cycles avec recours au secours"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "barchart",
+      "title": "Historique — recours au flux de secours, par jour",
+      "description": "Part de cycles ayant eu recours au flux de secours (Reserve Order Proposals), chaque jour.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 33
+      },
+      "targets": [
+        {
+          "expr": "max_over_time(order_mgmt_indicator_value{code=\"CAL-6\"}[1d:1h])",
+          "interval": "1d",
+          "legendFormat": "% cycles avec secours"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
     },
     {
       "type": "row",
@@ -1156,9 +1235,9 @@
       }
     },
     {
-      "type": "timeseries",
-      "title": "Historique — chiffres clés",
-      "description": "Mêmes 6 indicateurs que ci-dessus, dans le temps (unités mélangées — sert à repérer une tendance, pas à comparer les courbes entre elles).",
+      "type": "barchart",
+      "title": "Historique — chiffres clés, par jour",
+      "description": "Mêmes 6 indicateurs que ci-dessus, un point par jour (le pire/dernier relevé du jour selon l'indicateur). Unités mélangées — sert à repérer une tendance, pas à comparer les barres entre elles.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus_ordermgmt"
@@ -1171,27 +1250,33 @@
       },
       "targets": [
         {
-          "expr": "100 * order_mgmt_dashboard_essentiel{metric=\"stores_reported\"} / order_mgmt_dashboard_essentiel{metric=\"stores_expected\"}",
+          "expr": "max_over_time((100 * order_mgmt_dashboard_essentiel{metric=\"stores_reported\"} / order_mgmt_dashboard_essentiel{metric=\"stores_expected\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Magasins servis à temps (objectif 99 %)"
         },
         {
-          "expr": "100 * (order_mgmt_dashboard_essentiel{metric=\"wms_orders_sent\"} - order_mgmt_dashboard_essentiel{metric=\"wms_orders_late\"}) / order_mgmt_dashboard_essentiel{metric=\"wms_orders_sent\"}",
+          "expr": "max_over_time((100 * (order_mgmt_dashboard_essentiel{metric=\"wms_orders_sent\"} - order_mgmt_dashboard_essentiel{metric=\"wms_orders_late\"}) / order_mgmt_dashboard_essentiel{metric=\"wms_orders_sent\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Commandes parties à l'heure"
         },
         {
-          "expr": "100 * avg_over_time((order_mgmt_indicator_status{code=\"E2E-3\"} == bool 0)[24h:5m])",
+          "expr": "max_over_time((100 * avg_over_time((order_mgmt_indicator_status{code=\"E2E-3\"} == bool 0)[24h:5m]))[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Chaîne disponible (24 h)"
         },
         {
-          "expr": "order_mgmt_indicator_value{code=\"E2E-1\"} / 3600",
+          "expr": "max_over_time((order_mgmt_indicator_value{code=\"E2E-1\"} / 3600)[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Durée du cycle (objectif 6 h)"
         },
         {
-          "expr": "order_mgmt_indicator_value{code=\"E2E-4\"}",
+          "expr": "max_over_time((order_mgmt_indicator_value{code=\"E2E-4\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Cycles sans incident"
         },
         {
-          "expr": "order_mgmt_indicator_value{code=\"E2E-5\"}",
+          "expr": "max_over_time((order_mgmt_indicator_value{code=\"E2E-5\"})[1d:1h])",
+          "interval": "1d",
           "legendFormat": "Interventions manuelles (objectif 0)"
         }
       ],
@@ -1710,6 +1795,117 @@
       }
     },
     {
+      "type": "timeseries",
+      "title": "Temps de traitement — évolution en temps réel",
+      "description": "Les mêmes durées/latences que la jauge ci-dessus, en continu (pas de moyenne par jour) — pour repérer un ralentissement en train de se produire.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 69
+      },
+      "targets": [
+        {
+          "expr": "order_mgmt_indicator_value{code=\"COL-3\"}",
+          "legendFormat": "Latence stock (COL-3)"
+        },
+        {
+          "expr": "order_mgmt_indicator_value{code=\"CAL-2\"}",
+          "legendFormat": "Durée calcul réassort (CAL-2)"
+        },
+        {
+          "expr": "order_mgmt_indicator_value{code=\"CAL-5\"}",
+          "legendFormat": "Durée moyenne calcul (CAL-5)"
+        },
+        {
+          "expr": "order_mgmt_indicator_value{code=\"TRA-2\"}",
+          "legendFormat": "Latence transmission (TRA-2)"
+        },
+        {
+          "expr": "order_mgmt_indicator_value{code=\"TRA-5\"}",
+          "legendFormat": "Délai réception→commande (TRA-5)"
+        },
+        {
+          "expr": "order_mgmt_indicator_value{code=\"WMS-4\"}",
+          "legendFormat": "Durée import WMS (WMS-4)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "DAGs par groupe — exécution en temps réel",
+      "description": "Statut agrégé de chaque groupe de DAGs (CAL-8, CAL-9, TRA-6, WMS-9), en continu — pas de moyenne par jour.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 69
+      },
+      "targets": [
+        {
+          "expr": "order_mgmt_indicator_status{code=\"CAL-8\"}",
+          "legendFormat": "CAL-8"
+        },
+        {
+          "expr": "order_mgmt_indicator_status{code=\"CAL-9\"}",
+          "legendFormat": "CAL-9"
+        },
+        {
+          "expr": "order_mgmt_indicator_status{code=\"TRA-6\"}",
+          "legendFormat": "TRA-6"
+        },
+        {
+          "expr": "order_mgmt_indicator_status{code=\"WMS-9\"}",
+          "legendFormat": "WMS-9"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Conforme",
+                  "color": "green"
+                },
+                "1": {
+                  "text": "À surveiller",
+                  "color": "orange"
+                },
+                "2": {
+                  "text": "Bloquant",
+                  "color": "red"
+                },
+                "3": {
+                  "text": "Donnée indisponible",
+                  "color": "grey"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "rowHeight": 0.9
+      }
+    },
+    {
       "type": "row",
       "title": "6. Diagnostic technique complet (tous les indicateurs — pour l'exploitation)",
       "collapsed": true,
@@ -1717,7 +1913,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 69
+        "y": 76
       },
       "panels": [
         {
@@ -1731,7 +1927,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 70
+            "y": 77
           },
           "options": {
             "showHeader": true
@@ -1756,7 +1952,7 @@
             "h": 6,
             "w": 24,
             "x": 0,
-            "y": 80
+            "y": 87
           },
           "targets": [
             {
