@@ -50,7 +50,7 @@ def compute_chapeau_calcul(unitaires: dict[str, IndicatorResult]) -> ChapeauResu
         "CHAPEAU-CALCUL",
         "Le calcul a-t-il produit une proposition pour chaque magasin ?",
         unitaires,
-        ["CAL-1", "CAL-4", "CAL-6"],
+        ["CAL-1", "CAL-4", "CAL-6", "CAL-8"],
     )
 
 
@@ -59,7 +59,7 @@ def compute_chapeau_transmission(unitaires: dict[str, IndicatorResult]) -> Chape
         "CHAPEAU-TRANSMISSION",
         "Les propositions sont-elles devenues des commandes dans GOLD ?",
         unitaires,
-        ["TRA-1", "TRA-4"],
+        ["TRA-1", "TRA-4", "TRA-6"],
     )
 
 
@@ -68,7 +68,7 @@ def compute_chapeau_depart_entrepot(unitaires: dict[str, IndicatorResult]) -> Ch
         "CHAPEAU-DEPART-ENTREPOT",
         "Les commandes partiront-elles à l'entrepôt à temps ?",
         unitaires,
-        ["WMS-6", "WMS-1", "WMS-8"],
+        ["WMS-6", "WMS-1", "WMS-8", "WMS-9"],
     )
 
 

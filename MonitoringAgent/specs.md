@@ -13,7 +13,7 @@ Le processus Order Management couvre la chaîne : **Serveur Central O4HQ → GOL
 
 ## 2. Objectifs
 
-Construire une première grille d'indicateurs — **1 indicateur de tête**, **6 indicateurs chapeau** pour le pilotage, **34 indicateurs unitaires** pour le diagnostic — afin de **mesurer l'état de fonctionnement réel du processus et anticiper les incidents**, au lieu de constater les pannes. Si l'approche est validée, elle sera étendue à d'autres processus métier.
+Construire une première grille d'indicateurs — **1 indicateur de tête**, **6 indicateurs chapeau** pour le pilotage, **38 indicateurs unitaires** pour le diagnostic — afin de **mesurer l'état de fonctionnement réel du processus et anticiper les incidents**, au lieu de constater les pannes. Si l'approche est validée, elle sera étendue à d'autres processus métier.
 
 ## 3. Méthode — deux niveaux de lecture
 
@@ -36,12 +36,14 @@ Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **
 | # | Flux | Nature technique | Description | DAGs Airflow | Remarque / niveau de confiance |
 |---|---|---|---|---|---|
 | ① | O4HQ → GOLD | Batch nocturne, hors Airflow | Remontée des ventes consolidées des magasins vers GOLD (extraction CSV PostgreSQL o4hq_prod → SFTP → staging Oracle → intégration par procédure stockée). PostgreSQL et Oracle ne communiquent qu'via ce fichier CSV. | Aucun DAG identifié | **Angle mort prioritaire** : aucune alerte en cas d'échec, alors qu'il conditionne le flux ②. À instrumenter avec l'équipe GOLD. |
-| ② | GOLD → RELEX | Extraction batch | Historique de ventes et stock transmis à RELEX pour le calcul de réassort. | 28 DAGs (4 prioritaires ventes/stock : `relex-write-spool-sales-transactions-dag`, `relex-write-spool-dc-sales-transactions-dag`, `relex-write-spool-balances-dag`, `relex-write-spool-inventory-transactions-dag` ; 24 référentiel + variantes) | Supervision niveau 1 sur ventes/stock ; référentiel en niveau 2. |
-| ③ | RELEX → GOLD | API asynchrone (non confirmée) | Flux « Order Proposals » + fallback « Reserve Order Proposals ». | `relex-read-order-proposals-dag`, `relex-read-order-proposals-reserve-dag`, `relex-read-projections-forecasts-dag`, `relex-infolog-stock-dlc-dag` | ⚠ Nature non confirmée — relecture du code des 4 DAGs nécessaire avant instrumentation. |
-| ④ | GOLD → WMS | API / import fichier | Commande de réassort transmise au WMS, cut-off différencié par enseigne. | `wms-schedule-dag` (orchestrateur, 5 passages/jour : 01:00, 03:00, 05:00, 06:00, 07:00) + 9 DAGs interfaces m10→m91 | Cut-off par enseigne à confirmer dans le code. |
+| ② | GOLD → RELEX | Extraction batch | Historique de ventes et stock transmis à RELEX pour le calcul de réassort. | 28 DAGs. Cœur ventes/stock (7) : `relex-write-spool-sales-transactions-dag`, `relex-write-spool-sales-transactions-7days-dag`, `relex-write-spool-dc-sales-transactions-dag`, `relex-write-spool-balances-dag`, `relex-write-spool-balances-extraction-dag`, `relex-write-spool-batch-balances-transactions-dag`, `relex-write-spool-inventory-transactions-dag` ; 21 référentiel + variantes | Supervision niveau 1 sur les 7 DAGs ventes/stock (**CAL-8**) ; les 21 référentiel restants agrégés en niveau 2 (**CAL-9**). |
+| ③ | RELEX → GOLD | API asynchrone (non confirmée) | Flux « Order Proposals » + fallback « Reserve Order Proposals ». | `relex-read-order-proposals-dag`, `relex-read-order-proposals-reserve-dag`, `relex-read-projections-forecasts-dag`, `relex-infolog-stock-dlc-dag` | ⚠ Nature non confirmée — relecture du code des 4 DAGs nécessaire avant instrumentation. Statut technique des 4 DAGs suivi indépendamment de cette confirmation (**TRA-6**). |
+| ④ | GOLD → WMS | API / import fichier | Commande de réassort transmise au WMS, cut-off différencié par enseigne. | `wms-schedule-dag` (orchestrateur, 5 passages/jour : 01:00, 03:00, 05:00, 06:00, 07:00) + 9 DAGs interfaces m10→m91 | Cut-off par enseigne à confirmer dans le code. Statut de l'orchestrateur suivi par **WMS-2**, des 9 interfaces par **WMS-9**. |
 | ⑤ | RELEX ↔ WMS | Flux direct SaaS↔SaaS, hors GOLD | Identifié mais **non qualifié ni instrumenté** — priorité de supervision. | `wms-relex-write-spool-m91-dag` transite en réalité par GOLD/SFTP — ce n'est pas ce flux | À qualifier avant toute supervision. |
 | ⑥ | WMS → Magasin | Flux physique | Expédition entrepôt → magasin. | Sans objet | Hors périmètre de supervision applicative. |
-| ⑦ | WMS → GOLD | Retour (à confirmer) | Confirmation d'expédition / mise à jour de stock. | `wms-write-spool-m41-dag`, `m51-dag`, `m8001-dag`, `m91-dag` | Aucun DAG dédié identifié ; inclusion au pilote à trancher. |
+| ⑦ | WMS → GOLD | Retour (à confirmer) | Confirmation d'expédition / mise à jour de stock. | `wms-write-spool-m41-dag`, `m51-dag`, `m8001-dag`, `m91-dag` | Mêmes 4 DAGs que le flux ④ — couverts techniquement par **WMS-9** en attendant confirmation du sens de lecture ; inclusion au pilote à trancher. |
+
+> **Périmètre Airflow (v1.1)** — l'inventaire complet du parc LabelVie compte 153 DAGs (`Inventaire_DAGs_LabelVie_153.xlsx`). 43 sont rattachés aux flux ①–⑤ et ⑦ ci-dessus et entrent dans le périmètre de cette note. Les 110 restants servent d'autres domaines (HELPDESK, ATACADAO/ATC, ASSORTIMENT, PROMO, AGIRH, AGRESSO, fidélité, e-commerce…) sans lien avec le flux de commandes et restent hors périmètre.
 
 ---
 
@@ -51,9 +53,9 @@ Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **
 |---|---|---|---|
 | **Le processus a-t-il bien tourné cette nuit ?** *(indicateur de tête)* | Part des magasins ayant reçu, avant le cut-off de leur enseigne, une commande de réassort exploitable = **COL-2 et CAL-4 et WMS-6 et WMS-8** | Les 6 indicateurs chapeau ci-dessous | Forte — réassort du jour compromis |
 | Les ventes de la nuit sont-elles toutes remontées ? | Collecte nocturne conforme = **COL-1 et COL-2** | COL-3, COL-4, COL-5, COL-6 (§6.1) | Forte — sans ventes, aucun besoin calculable |
-| Le calcul a-t-il produit une proposition pour chaque magasin ? | Calcul complet = **CAL-1 et CAL-4 et CAL-6** | CAL-2, CAL-3, CAL-5, CAL-7 (§6.2) | Forte — aucune commande générée pour les magasins non couverts |
-| Les propositions sont-elles devenues des commandes dans GOLD ? | Transmission intègre = **TRA-1 et TRA-4** | TRA-2, TRA-3, TRA-5 (§6.3) | Forte — propositions perdues silencieusement |
-| Les commandes partiront-elles à l'entrepôt à temps ? | Départ dans les délais = **WMS-6 et WMS-1 et WMS-8** | WMS-2, WMS-3, WMS-4, WMS-5, WMS-7 (§6.4) | Forte — livraison décalée à J+1 |
+| Le calcul a-t-il produit une proposition pour chaque magasin ? | Calcul complet = **CAL-1 et CAL-4 et CAL-6 et CAL-8** | CAL-2, CAL-3, CAL-5, CAL-7, CAL-9 (§6.2) | Forte — aucune commande générée pour les magasins non couverts |
+| Les propositions sont-elles devenues des commandes dans GOLD ? | Transmission intègre = **TRA-1 et TRA-4 et TRA-6** | TRA-2, TRA-3, TRA-5 (§6.3) | Forte — propositions perdues silencieusement |
+| Les commandes partiront-elles à l'entrepôt à temps ? | Départ dans les délais = **WMS-6 et WMS-1 et WMS-8 et WMS-9** | WMS-2, WMS-3, WMS-4, WMS-5, WMS-7 (§6.4) | Forte — livraison décalée à J+1 |
 | Un flux hors GOLD peut-il invalider ce constat ? | Couverture du flux direct = **DIR-1** | DIR-2, DIR-3 (§6.5) | Moyenne — non quantifiable tant que non qualifié |
 | La chaîne se dégrade-t-elle dans le temps ? | Tenue de la chaîne = **E2E-1 et E2E-4 et E2E-2** | E2E-3, E2E-5, CAL-5 (§6.6) | Faible à court terme, moyenne en cumulé |
 
@@ -83,6 +85,8 @@ Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **
 | **CAL-5** — Durée moyenne du calcul (période) | Technique | 2 | Moyenne | Dérive progressive de performance. | Moyenne glissante vs référence initiale | Dérive vs référence (seuil à calibrer) | Faible |
 | **CAL-6** — Taux d'activation du flux de secours | Fonctionnel | 2 | Haute | Résilience du PCA RELEX. | Nb/durée des recours au flux de secours / cycles | Toute activation | Faible |
 | **CAL-7** — Taux de propositions en anomalie fonctionnelle | Fonctionnel | 2 | Moyenne | Quantité nulle, DLC incohérente, contrainte de stock non respectée. | Part hors règles de contrôle (attributs métier à confirmer — WZM) | À définir avec le métier | Élevée — attributs métier à obtenir |
+| **CAL-8** — Disponibilité des DAGs cœur ventes/stock (flux GOLD → RELEX) | Technique | 1 | Haute | Les 7 DAGs Airflow qui alimentent RELEX en ventes et stock se sont-ils exécutés avec succès sur leur dernier passage ? | Statut du dernier run (API Airflow) des 7 DAGs cœur du flux ②, agrégé en pire cas | ≥ 1 DAG en échec | Faible — statut déjà disponible via l'API Airflow |
+| **CAL-9** — Taux de succès des DAGs référentiel (flux GOLD → RELEX) | Technique | 2 | Moyenne | Les 21 DAGs qui alimentent le référentiel RELEX (produits, sites, fournisseurs, campagnes, calendriers) se sont-ils exécutés avec succès ? | Part des 21 DAGs référentiel du flux ② dont le dernier run est en succès | < 100 % en succès — tendance à surveiller, pas une alerte immédiate | Faible |
 
 ### 6.3 Transmission RELEX → GOLD
 
@@ -93,6 +97,7 @@ Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **
 | **TRA-3** — Taux de rejets techniques à l'interface | Technique | 2 | Moyenne | Erreurs de mapping ou timeouts. | Nb rejets / messages reçus, par cause | À calibrer (référence à établir) | Moyenne |
 | **TRA-4** — Taux de transformation proposition → commande | Fonctionnel | 2 | Haute | Chaque proposition aboutit-elle à une commande exploitable ? | Commandes créées / propositions reçues, même cycle | < 100 % transformées sur le cycle | Moyenne |
 | **TRA-5** — Délai réception → création de commande | Fonctionnel | 2 | Basse | Fluidité du traitement métier GOLD. | Écart horodatages, médiane | À calibrer après observation | Moyenne |
+| **TRA-6** — Disponibilité des DAGs RELEX → GOLD | Technique | 1 | Haute | Les 4 DAGs qui remontent les propositions RELEX (Order Proposals, Reserve Order Proposals, projections, stock DLC) se sont-ils exécutés avec succès ? | Statut du dernier run des 4 DAGs du flux ③, agrégé en pire cas | ≥ 1 DAG en échec | Faible — statut déjà disponible ; ne résout pas l'incertitude sur la nature du flux (§4, flux ③) |
 
 ### 6.4 GOLD → WMS — Infolog/Generix (cut-off par enseigne)
 
@@ -106,6 +111,7 @@ Chaque indicateur unitaire porte : un **type** (technique ou fonctionnel), un **
 | **WMS-6** — Respect des règles de cut-off par enseigne | Fonctionnel | 1 | Haute | Commande après cut-off = risque non-expédition jour même. | Heure d'émission vs cut-off enseigne | Toute commande émise après cut-off | Moyenne — paramétrage à récupérer |
 | **WMS-7** — Taux de commandes bloquées ou en attente côté WMS | Fonctionnel | 2 | Moyenne | Reçues mais non lancées en préparation. | Nb en statut bloqué/attente, à heure fixe, avec ancienneté | À définir avec l'exploitation | Moyenne |
 | **WMS-8** — Complétude des données transmises | Fonctionnel | 2 | Moyenne | Champs obligatoires manquants (BU, fournisseur, article, quantité, dates, magasin/entrepôt, ID proposition RELEX). | Part de messages avec champ manquant | Tout champ obligatoire manquant | Faible |
+| **WMS-9** — Taux de succès des DAGs interfaces GOLD → WMS | Technique | 1 | Haute | Les 9 DAGs d'interface déclenchés par l'orchestrateur (m10 à m91) se sont-ils exécutés avec succès, en complément du statut de l'orchestrateur lui-même (WMS-2) ? | Statut du dernier run des 9 DAGs `wms-write-spool-m10-dag` à `m91-dag`, agrégé en pire cas | ≥ 1 DAG en échec | Faible |
 
 ### 6.5 Flux direct RELEX ↔ WMS (angle mort prioritaire, à instrumenter)
 

@@ -18,6 +18,18 @@ def test_gold_stub_connector_shapes():
     assert wms["orders_imported"] <= wms["orders_sent"]
 
 
+def test_gold_stub_bulk_airflow_dags_status():
+    connectors = import_service_module("mcp_gold", "connectors")
+    gold = connectors.StubGoldConnector(seed=42)
+
+    dag_ids = ["dag-a", "dag-b", "dag-c"]
+    result = gold.get_airflow_dags_status(dag_ids)
+
+    assert result["source_mode"] == "stub"
+    assert set(result["dags"].keys()) == set(dag_ids)
+    assert all(state in ("success", "failed") for state in result["dags"].values())
+
+
 def test_gold_stub_is_reproducible_with_same_seed():
     connectors = import_service_module("mcp_gold", "connectors")
     a = connectors.StubGoldConnector(seed=7).get_collection_anomalies()

@@ -92,5 +92,12 @@ def get_airflow_dag_status(dag_id: str) -> dict:
     return connector.get_airflow_dag_status(dag_id)
 
 
+@mcp.tool()
+def get_airflow_dags_status(dag_ids: list[str]) -> dict:
+    """Last run status of a group of Airflow DAGs in one call (backs CAL-8, CAL-9,
+    TRA-6, WMS-9 — see specs.md §4 "Périmètre Airflow" for the 43-DAG catalogue)."""
+    return connector.get_airflow_dags_status(dag_ids)
+
+
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host=settings.mcp_host, port=settings.mcp_port)

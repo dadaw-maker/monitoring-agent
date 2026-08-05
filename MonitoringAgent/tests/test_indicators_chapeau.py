@@ -50,8 +50,8 @@ def test_chapeau_flux_direct_stays_unknown_pending_qualification():
 
 def test_compute_all_chapeaux_returns_seven_entries():
     unitaires = {code: _result(code, IndicatorStatus.OK) for code in [
-        "COL-1", "COL-2", "CAL-1", "CAL-4", "CAL-6", "TRA-1", "TRA-4",
-        "WMS-6", "WMS-1", "WMS-8", "DIR-1", "E2E-1", "E2E-4", "E2E-2",
+        "COL-1", "COL-2", "CAL-1", "CAL-4", "CAL-6", "CAL-8", "TRA-1", "TRA-4", "TRA-6",
+        "WMS-6", "WMS-1", "WMS-8", "WMS-9", "DIR-1", "E2E-1", "E2E-4", "E2E-2",
     ]}
     all_chapeaux = chapeau.compute_all_chapeaux(unitaires)
     assert len(all_chapeaux) == 7

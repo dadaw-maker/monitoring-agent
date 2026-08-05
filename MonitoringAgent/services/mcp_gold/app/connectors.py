@@ -66,6 +66,11 @@ class GoldConnector(ABC):
     def get_airflow_dag_status(self, dag_id: str) -> dict[str, Any]:
         """Generic DAG status lookup, used across several indicators (specs.md §4)."""
 
+    @abstractmethod
+    def get_airflow_dags_status(self, dag_ids: list[str]) -> dict[str, Any]:
+        """Bulk DAG status lookup for a whole group (CAL-8/CAL-9/TRA-6/WMS-9,
+        specs.md §4 "Périmètre Airflow") — one call instead of one per DAG."""
+
 
 class StubGoldConnector(GoldConnector):
     """Deterministic-ish fake data, shaped like the real payloads described in specs.md §6.1-6.4."""
@@ -185,6 +190,16 @@ class StubGoldConnector(GoldConnector):
             "source_mode": "stub",
         }
 
+    def get_airflow_dags_status(self, dag_ids: list[str]) -> dict[str, Any]:
+        return {
+            "dags": {
+                dag_id: self._rng.choice(["success", "success", "success", "success", "failed"])
+                for dag_id in dag_ids
+            },
+            "checked_at": self._now().isoformat(),
+            "source_mode": "stub",
+        }
+
 
 # ============================================================================
 # CONNEXION RÉELLE — désactivée par défaut.
@@ -293,6 +308,17 @@ class StubGoldConnector(GoldConnector):
 #         row = self._query_one("SELECT * FROM V_SUP_AIRFLOW_DAG_STATUS WHERE dag_id = :dag_id", {"dag_id": dag_id})
 #         row["source_mode"] = "live"
 #         return row
+#
+#     def get_airflow_dags_status(self, dag_ids: list[str]) -> dict[str, Any]:
+#         # TODO: prefer a single Airflow REST API batch call
+#         # (GET /api/v1/dags/~/dagRuns/list with a dag_id filter) over one
+#         # request per DAG once the Airflow base URL/token are confirmed
+#         # (specs.md flux F1d) — this loop is the interim, correct-but-slow version.
+#         dags = {}
+#         for dag_id in dag_ids:
+#             row = self._query_one("SELECT * FROM V_SUP_AIRFLOW_DAG_STATUS WHERE dag_id = :dag_id", {"dag_id": dag_id})
+#             dags[dag_id] = row.get("last_run_state")
+#         return {"dags": dags, "source_mode": "live"}
 # ============================================================================
 
 

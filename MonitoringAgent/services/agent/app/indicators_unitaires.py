@@ -31,6 +31,13 @@ def _mode(data: dict[str, Any] | None) -> str:
     return (data or {}).get("source_mode", "unknown")
 
 
+def _dag_group(data: dict[str, Any] | None) -> tuple[int, list[str]]:
+    """Unpacks a bulk get_airflow_dags_status() result into (total, failed_dag_ids)."""
+    dags = (data or {}).get("dags") or {}
+    failed = [dag_id for dag_id, state in dags.items() if state != "success"]
+    return len(dags), failed
+
+
 # --------------------------------------------------------------------------
 # 6.1 Collecte des données amont (O4HQ -> GOLD)
 # --------------------------------------------------------------------------
@@ -225,6 +232,35 @@ def compute_cal_7(data: dict[str, Any] | None) -> IndicatorResult:
     )
 
 
+def compute_cal_8(data: dict[str, Any] | None) -> IndicatorResult:
+    code, label = "CAL-8", "Disponibilité des DAGs cœur ventes/stock (flux GOLD -> RELEX)"
+    if not data:
+        return _unknown(code, label, "technique", 1)
+    total, failed = _dag_group(data)
+    status = IndicatorStatus.OK if not failed else IndicatorStatus.CRITICAL
+    return IndicatorResult(
+        code=code, label=label, type="technique", niveau=1,
+        value=float(len(failed)), unit="DAGs en échec", status=status,
+        detail={"total_dags": total, "failed_dags": failed}, source_mode=_mode(data),
+    )
+
+
+def compute_cal_9(data: dict[str, Any] | None) -> IndicatorResult:
+    code, label = "CAL-9", "Taux de succès des DAGs référentiel (flux GOLD -> RELEX)"
+    if not data:
+        return _unknown(code, label, "technique", 2)
+    total, failed = _dag_group(data)
+    pct = ((total - len(failed)) / total * 100) if total else 0.0
+    status = IndicatorStatus.OK if not failed else IndicatorStatus.WARNING
+    return IndicatorResult(
+        code=code, label=label, type="technique", niveau=2,
+        value=round(pct, 2), unit="%", status=status,
+        detail={"total_dags": total, "failed_dags": failed,
+                "note": "Tendance à surveiller plutôt qu'alerte immédiate (specs.md §6.2)"},
+        source_mode=_mode(data),
+    )
+
+
 # --------------------------------------------------------------------------
 # 6.3 Transmission RELEX -> GOLD
 # --------------------------------------------------------------------------
@@ -294,6 +330,21 @@ def compute_tra_5(data: dict[str, Any] | None) -> IndicatorResult:
         code=code, label=label, type="fonctionnel", niveau=2,
         value=p50, unit="s (médiane)", status=status,
         detail={"note": "Seuil provisoire, à calibrer (specs.md §6.3)"}, source_mode=_mode(data),
+    )
+
+
+def compute_tra_6(data: dict[str, Any] | None) -> IndicatorResult:
+    code, label = "TRA-6", "Disponibilité des DAGs RELEX -> GOLD"
+    if not data:
+        return _unknown(code, label, "technique", 1)
+    total, failed = _dag_group(data)
+    status = IndicatorStatus.OK if not failed else IndicatorStatus.CRITICAL
+    return IndicatorResult(
+        code=code, label=label, type="technique", niveau=1,
+        value=float(len(failed)), unit="DAGs en échec", status=status,
+        detail={"total_dags": total, "failed_dags": failed,
+                "note": "Statut technique uniquement — nature du flux non confirmée (specs.md §4, flux ③)"},
+        source_mode=_mode(data),
     )
 
 
@@ -407,6 +458,19 @@ def compute_wms_8(gold_data: dict[str, Any] | None) -> IndicatorResult:
         code=code, label=label, type="fonctionnel", niveau=2,
         value=float(missing), unit="messages avec champ manquant", status=status, detail={},
         source_mode=_mode(gold_data),
+    )
+
+
+def compute_wms_9(data: dict[str, Any] | None) -> IndicatorResult:
+    code, label = "WMS-9", "Taux de succès des DAGs interfaces GOLD -> WMS"
+    if not data:
+        return _unknown(code, label, "technique", 1)
+    total, failed = _dag_group(data)
+    status = IndicatorStatus.OK if not failed else IndicatorStatus.CRITICAL
+    return IndicatorResult(
+        code=code, label=label, type="technique", niveau=1,
+        value=float(len(failed)), unit="DAGs en échec", status=status,
+        detail={"total_dags": total, "failed_dags": failed}, source_mode=_mode(data),
     )
 
 

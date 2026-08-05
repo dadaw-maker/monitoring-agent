@@ -59,3 +59,57 @@ def test_tra_1_critical_on_gap():
     result = unitaires.compute_tra_1({"cycle": "03:00", "proposals_emitted": 100, "proposals_received": 97})
     assert result.status == IndicatorStatus.CRITICAL
     assert result.value == 3.0
+
+
+def _dags(*, ok, failed):
+    dags = {f"ok-dag-{i}": "success" for i in range(ok)}
+    dags.update({f"failed-dag-{i}": "failed" for i in range(failed)})
+    return {"dags": dags, "source_mode": "stub"}
+
+
+def test_cal_8_ok_when_all_core_dags_succeed():
+    result = unitaires.compute_cal_8(_dags(ok=7, failed=0))
+    assert result.status == IndicatorStatus.OK
+    assert result.code == "CAL-8"
+
+
+def test_cal_8_critical_on_any_failure():
+    result = unitaires.compute_cal_8(_dags(ok=6, failed=1))
+    assert result.status == IndicatorStatus.CRITICAL
+    assert result.value == 1.0
+
+
+def test_cal_8_unknown_when_no_data():
+    result = unitaires.compute_cal_8(None)
+    assert result.status == IndicatorStatus.UNKNOWN
+
+
+def test_cal_9_warning_not_critical_on_referentiel_failure():
+    # niveau 2 / moyenne priorité — a referentiel DAG failing is a trend to
+    # watch, not an immediate alert (specs.md §6.2).
+    result = unitaires.compute_cal_9(_dags(ok=20, failed=1))
+    assert result.status == IndicatorStatus.WARNING
+    assert result.value < 100.0
+
+
+def test_cal_9_ok_when_all_succeed():
+    result = unitaires.compute_cal_9(_dags(ok=21, failed=0))
+    assert result.status == IndicatorStatus.OK
+    assert result.value == 100.0
+
+
+def test_tra_6_critical_on_any_failure():
+    result = unitaires.compute_tra_6(_dags(ok=3, failed=1))
+    assert result.status == IndicatorStatus.CRITICAL
+    assert result.code == "TRA-6"
+
+
+def test_wms_9_ok_when_all_interfaces_succeed():
+    result = unitaires.compute_wms_9(_dags(ok=9, failed=0))
+    assert result.status == IndicatorStatus.OK
+    assert result.code == "WMS-9"
+
+
+def test_wms_9_critical_on_any_failure():
+    result = unitaires.compute_wms_9(_dags(ok=8, failed=1))
+    assert result.status == IndicatorStatus.CRITICAL
