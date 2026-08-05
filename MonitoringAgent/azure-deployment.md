@@ -103,7 +103,7 @@ Après ce bloc : `cd ..` pour revenir à `MonitoringAgent/` avant un `az acr bui
 - [x] **Bloc 4** — Apply partiel fait (resource group + ACR `acrordermgmtdeva4e111` + Key Vault créés)
 - [x] Variable GitHub `ACR_LOGIN_SERVER` = `acrordermgmtdeva4e111.azurecr.io`
 - [x] **Bloc 5** — Build + push des 3 images via `az acr build` (agent, mcp-gold, mcp-relex-generix — les 3 confirmés dans le registre)
-- [ ] **Bloc 6** — `terraform apply` complet — contournement Key Vault appliqué (voir ci-dessous), à relancer avec `git pull` + `terraform apply`
+- [ ] **Bloc 6** — `terraform apply` complet — bug NSG identifié et corrigé (voir ci-dessous), à relancer avec `git pull` + `terraform apply`
 - [ ] Vérification : dashboard Grafana accessible, données stub visibles
 
 ### Correctif appliqué en cours de route : accès réseau ACR/Key Vault/stockage
@@ -123,16 +123,16 @@ Trois bugs distincts trouvés lors du premier `terraform apply` complet, tous co
 - `infra/container_apps.tf` : `ca-ordermgmt-dev-mcp-relex-generix` fait 35 caractères, la limite Azure est 32 → renommé `ca-ordermgmt-dev-relex-generix`.
 - `infra/identity.tf` + `container_apps.tf` : ajout d'un `time_sleep` (90s) entre les attributions de rôle Key Vault et la création des Container Apps `grafana`/`mcp-relex-generix`, qui lisent des secrets Key Vault via leur identité managée dès leur provisioning.
 
-### Point bloquant : `grafana` et `mcp-relex-generix` échouaient avec "timeout after 5s" sur leurs secrets Key Vault
+### Résolu : `grafana` et `mcp-relex-generix` échouaient avec "timeout after 5s" sur leurs secrets Key Vault — cause : règle NSG manquante
 
 Malgré : le Key Vault avec `publicNetworkAccess = Enabled` confirmé (le bouton haut niveau *et* le réglage fin "Allow public access from All Networks"), le rôle "Key Vault Secrets User" attribué aux deux identités managées concernées (`id-ordermgmt-dev-grafana`, `id-ordermgmt-dev-mcp-relex-generix` — confirmé via `az role assignment list`), et une pause de 90s ajoutée — les deux Container Apps échouaient encore à la création avec :
 > *"Unable to get value using Managed identity ... for secret <nom>. Error: timeout after 5s"*
 
-Toutes les pistes raisonnablement vérifiables (RBAC, réseau, délai de propagation jusqu'à 20+ minutes réelles) ont été épuisées sans trouver la cause racine.
+Une première solution de contournement (secrets en valeur littérale Terraform au lieu de références Key Vault) a été proposée puis **rejetée à raison** : elle sortait les secrets du Key Vault, ce qui n'est pas acceptable même avec des placeholders — l'objectif du Key Vault est justement qu'aucun secret ne transite en clair par le state Terraform ou les logs CI.
 
-**Contournement appliqué (commit à venir) :** les 6 secrets concernés (`relex-client-id`, `relex-client-secret`, `relex-api-key`, `generix-api-key` sur `mcp-relex-generix` ; `grafana-admin-password`, `teams-webhook-url` sur `grafana`) ne sont plus lus depuis le Key Vault via l'identité managée — ils sont passés en valeur littérale Terraform (`value = var.xxx` au lieu de `key_vault_secret_id + identity`) dans `infra/container_apps.tf`. C'est sans risque *pour l'instant* car toutes ces valeurs sont encore des placeholders non sensibles (`changeme`/valeurs de stub, voir les défauts dans `infra/variables.tf`). Le Key Vault continue d'exister et de stocker ces mêmes valeurs (`infra/keyvault.tf` n'a pas changé) — seule la Container App ne va plus les *lire* depuis le Key Vault au démarrage.
+**Cause racine trouvée :** le NSG du sous-réseau `snet-aca` (`infra/network.tf`) n'autorisait le trafic sortant que vers les tags `AzureCloud` et `Internet`. Or Key Vault, ACR et le compte de stockage sont exposés via des **private endpoints** dans `snet-private-endpoints`, et leurs zones DNS privées (`privatelink.vaultcore.azure.net`, etc.) sont liées à ce même VNet. Résultat : toute ressource dans `snet-aca` qui résout `kv-xxx.vault.azure.net` obtient l'IP *privée* (`10.20.3.x`), pas l'IP publique — et ce trafic-là correspond au tag `VirtualNetwork`, pas `AzureCloud` ni `Internet`. Aucune règle ne l'autorisait, donc la règle `DenyAllOtherOutbound` (priorité 4096) le bloquait silencieusement : exactement le symptôme d'un timeout de 5s côté résolution de secret managée par identité.
 
-**À refaire plus tard**, une fois de vraies infos de connexion en jeu et/ou la cause racine comprise : repasser ces 6 `secret {}` en `key_vault_secret_id + identity` dans `container_apps.tf`.
+**Corrigé (pas de contournement, le vrai fix) :** ajout dans `infra/network.tf` d'une règle NSG `AllowOutboundToPrivateEndpoints` (priorité 125) autorisant le TCP 443 sortant de `snet-aca` vers `var.private_endpoints_subnet_prefix`. Les secrets restent en `key_vault_secret_id + identity` dans `infra/container_apps.tf`, inchangés.
 
 ---
 

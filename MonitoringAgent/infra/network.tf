@@ -89,7 +89,27 @@ resource "azurerm_network_security_group" "aca" {
     destination_port_range     = "443"
     source_address_prefix      = "*"
     destination_address_prefix = "AzureCloud"
-    description                = "Key Vault, ACR, Azure Monitor, Log Analytics"
+    description                = "Key Vault, ACR, Azure Monitor, Log Analytics (public endpoints)"
+  }
+
+  # Key Vault / ACR / Storage sit behind private endpoints in
+  # snet-private-endpoints, and their private DNS zones are linked to this
+  # VNet — so resources in snet-aca resolve those hostnames to the private
+  # endpoint IPs, not public ones. That traffic matches neither AzureCloud
+  # nor Internet above; without this rule it hits DenyAllOtherOutbound
+  # (silently, which is exactly what a "timeout after 5s" managed-identity
+  # Key Vault reference looks like — see azure-deployment.md).
+  security_rule {
+    name                       = "AllowOutboundToPrivateEndpoints"
+    priority                   = 125
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = var.private_endpoints_subnet_prefix
+    description                = "Key Vault / ACR / Storage private endpoints (snet-private-endpoints)"
   }
 
   security_rule {
