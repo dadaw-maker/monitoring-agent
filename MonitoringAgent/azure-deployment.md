@@ -102,8 +102,8 @@ Après ce bloc : `cd ..` pour revenir à `MonitoringAgent/` avant un `az acr bui
 - [x] **Bloc 1-3** — Dépôt cloné, `terraform.tfvars` créé, resource group importé (*"Import successful!"*)
 - [x] **Bloc 4** — Apply partiel fait (resource group + ACR `acrordermgmtdeva4e111` + Key Vault créés)
 - [x] Variable GitHub `ACR_LOGIN_SERVER` = `acrordermgmtdeva4e111.azurecr.io`
-- [ ] **Bloc 5** — Build + push des 3 images via `az acr build` (en cours)
-- [ ] **Bloc 6** — `terraform apply` complet
+- [x] **Bloc 5** — Build + push des 3 images via `az acr build` (agent, mcp-gold, mcp-relex-generix — les 3 confirmés dans le registre)
+- [ ] **Bloc 6** — `terraform apply` complet — **bloqué actuellement, voir ci-dessous**
 - [ ] Vérification : dashboard Grafana accessible, données stub visibles
 
 ### Correctif appliqué en cours de route : accès réseau ACR/Key Vault/stockage
@@ -115,6 +115,26 @@ az acr update --name acrordermgmtdeva4e111 --public-network-enabled true
 ```
 
 Le même problème aurait touché le Key Vault et le compte de stockage Prometheus/Grafana au Bloc 6 (Terraform y écrit aussi des données depuis l'extérieur du VNet) — corrigé dans `infra/acr.tf`, `infra/keyvault.tf` et `infra/storage.tf` avant que ça n'arrive : les trois passent à `public_network_access_enabled = true`, la sécurité restant assurée par le RBAC (pas d'accès anonyme, pas de compte admin) plutôt que par l'isolation réseau. Les private endpoints restent en place pour donner aux Container Apps un chemin privé depuis l'intérieur du VNet.
+
+### Correctif appliqué : sous-réseau ACA en CIDR invalide, nom de Container App trop long, propagation RBAC
+
+Trois bugs distincts trouvés lors du premier `terraform apply` complet, tous corrigés dans le code (commits `021069e`, `d9343d6`) :
+- `infra/variables.tf` : `10.20.1.0/23` n'est pas une frontière de sous-réseau valide → `10.20.0.0/23`.
+- `infra/container_apps.tf` : `ca-ordermgmt-dev-mcp-relex-generix` fait 35 caractères, la limite Azure est 32 → renommé `ca-ordermgmt-dev-relex-generix`.
+- `infra/identity.tf` + `container_apps.tf` : ajout d'un `time_sleep` (90s) entre les attributions de rôle Key Vault et la création des Container Apps `grafana`/`mcp-relex-generix`, qui lisent des secrets Key Vault via leur identité managée dès leur provisioning.
+
+### ⚠️ Point bloquant actuel (non résolu) : `grafana` et `mcp-relex-generix` échouent avec "timeout after 5s" sur leurs secrets Key Vault
+
+Malgré : le Key Vault avec `publicNetworkAccess = Enabled` confirmé, le rôle "Key Vault Secrets User" attribué aux deux identités managées concernées (`id-ordermgmt-dev-grafana`, `id-ordermgmt-dev-mcp-relex-generix`), et une pause de 90s ajoutée — les deux Container Apps échouent encore à la création avec :
+> *"Unable to get value using Managed identity ... for secret <nom>. Error: timeout after 5s"*
+
+Piste non encore vérifiée : les `network_acls` fins du Key Vault (`defaultAction`), distincts du simple bouton "accès public". À vérifier avec :
+```bash
+az keyvault show --name $KV_NAME --query "properties.networkAcls"
+```
+(pas encore obtenu de résultat exploitable — variable `$KV_NAME` perdue entre deux sessions Cloud Shell, à refaire : `KV_NAME=$(terraform output -raw key_vault_name)`)
+
+Décision en cours : attendre ~20-30 minutes (propagation RBAC/réseau) puis relancer simplement `terraform apply` (idempotent, sans changement de code) avant d'creuser plus loin.
 
 ---
 
