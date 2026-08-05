@@ -39,25 +39,30 @@ resource "azurerm_container_app" "mcp_relex_generix" {
     identity = azurerm_user_assigned_identity.mcp_relex_generix.id
   }
 
+  # TEMPORARY: Container Apps' Key Vault secret reference resolution
+  # ("Unable to get value using Managed identity ... timeout after 5s")
+  # fails consistently despite confirmed-correct RBAC (Key Vault Secrets
+  # User on this identity) and network access (Enabled, All Networks) —
+  # see azure-deployment.md for the full diagnostic trail. Using literal
+  # values here as an unblock (all current values are non-sensitive
+  # placeholders — "changeme"/stub credentials, see variables.tf defaults)
+  # until the root cause is found. Revert to key_vault_secret_id + identity
+  # once real credentials are in play.
   secret {
-    name                = "relex-client-id"
-    key_vault_secret_id = azurerm_key_vault_secret.this["relex-client-id"].id
-    identity            = azurerm_user_assigned_identity.mcp_relex_generix.id
+    name  = "relex-client-id"
+    value = var.relex_client_id
   }
   secret {
-    name                = "relex-client-secret"
-    key_vault_secret_id = azurerm_key_vault_secret.this["relex-client-secret"].id
-    identity            = azurerm_user_assigned_identity.mcp_relex_generix.id
+    name  = "relex-client-secret"
+    value = var.relex_client_secret
   }
   secret {
-    name                = "relex-api-key"
-    key_vault_secret_id = azurerm_key_vault_secret.this["relex-api-key"].id
-    identity            = azurerm_user_assigned_identity.mcp_relex_generix.id
+    name  = "relex-api-key"
+    value = var.relex_api_key
   }
   secret {
-    name                = "generix-api-key"
-    key_vault_secret_id = azurerm_key_vault_secret.this["generix-api-key"].id
-    identity            = azurerm_user_assigned_identity.mcp_relex_generix.id
+    name  = "generix-api-key"
+    value = var.generix_api_key
   }
 
   template {
@@ -260,15 +265,19 @@ resource "azurerm_container_app" "grafana" {
     identity_ids = [azurerm_user_assigned_identity.grafana.id]
   }
 
+  # TEMPORARY: see the matching comment on mcp_relex_generix above and
+  # azure-deployment.md for the full diagnostic trail — literal values as an
+  # unblock (grafana-admin-password / teams-webhook-url are still
+  # placeholders, see variables.tf defaults) until the Key Vault secret
+  # reference timeout is understood. Revert to key_vault_secret_id + identity
+  # once real credentials are in play.
   secret {
-    name                = "grafana-admin-password"
-    key_vault_secret_id = azurerm_key_vault_secret.this["grafana-admin-password"].id
-    identity            = azurerm_user_assigned_identity.grafana.id
+    name  = "grafana-admin-password"
+    value = var.grafana_admin_password
   }
   secret {
-    name                = "teams-webhook-url"
-    key_vault_secret_id = azurerm_key_vault_secret.this["teams-webhook-url"].id
-    identity            = azurerm_user_assigned_identity.grafana.id
+    name  = "teams-webhook-url"
+    value = var.teams_webhook_url
   }
 
   template {
