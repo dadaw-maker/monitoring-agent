@@ -38,8 +38,94 @@ Une fois ces 6 étapes faites une bonne fois, on n'a plus besoin d'y retoucher :
 | GitHub Repository ID (numérique) | `1191809919` |
 | Environnement GitHub | `azure-production` |
 | ACR (registre d'images), créé au Bloc 4 | `acrordermgmtdeva4e111` (`.azurecr.io`) |
+| Key Vault | `kv-ordermgmtda4e111` |
+| Environnement Container Apps | `cae-ordermgmt-dev` |
+| Dashboard Grafana (public) | `https://ca-ordermgmt-dev-grafana.whitesky-0ae7e99f.westeurope.azurecontainerapps.io` (admin / secret Key Vault `grafana-admin-password`) |
 
 > ⚠️ **Si le Cloud Shell se déconnecte/redémarre**, il repart dans `~` (`/home/<toi>`), sans mémoire des `cd` précédents ni des variables shell (`$ACR`). Le dépôt cloné devrait rester sur le disque persistant de Cloud Shell, mais dans le doute vérifier avec `ls ~` avant de relancer une commande.
+
+## État final : tout tourne, déployé à la main
+
+Le `terraform apply` du Bloc 6 s'est fait interrompre par une perte de session Cloud Shell (voir le log détaillé plus bas), avec un state Terraform coincé (lock) et deux Container Apps détruites au milieu de leur recréation. Plutôt que de continuer à lutter contre Terraform, on a fini le déploiement **à la main**, directement en CLI Azure, pour les pièces qui manquaient. Résultat : **les 6 briques tournent**, mais Terraform ne les connaît plus toutes — voir "Passer en production" plus bas pour la remise en ordre.
+
+### Les 6 Container Apps déployées
+
+| Container App | Rôle | Mode |
+|---|---|---|
+| `ca-ordermgmt-dev-agent` | Agent de supervision — interroge GOLD et RELEX/Generix toutes les 60s, calcule les 34 indicateurs + 6 chapeaux + tête, les publie pour Prometheus | — |
+| `ca-ordermgmt-dev-gold` | Connecteur GOLD (Oracle ERP) | **stub, temporaire** — en production tourne on-premises (§ Passer en production) |
+| `ca-ordermgmt-dev-relex-generix` | Connecteur RELEX (REST) + Generix (SOAP/EDI) | **stub** |
+| `ca-ordermgmt-dev-prometheus` | Stocke l'historique des indicateurs (400 jours de rétention) | — |
+| `ca-ordermgmt-dev-grafana` | Dashboard — seule app exposée publiquement | — |
+
+### Deux bugs Azure CLI rencontrés en cours de route (à retenir)
+
+- **`az containerapp create --yaml`** renvoie systématiquement `Bad Request ... could not be converted to System.Boolean` sur ce Cloud Shell, quel que soit le contenu du fichier (testé avec YAML valide, puis JSON valide, sans autre flag concurrent). Contournement fiable : **`az deployment group create --template-file`** (un vrai template ARM) — chemin de code différent, fonctionne à chaque fois.
+- **`az containerapp create --env-vars`** et **`az containerapp update --set-env-vars`** perdent silencieusement la valeur des variables "en clair" (`NAME=value`) — seules celles en `secretref:...` survivent. Se voit dans `az containerapp show ... --query "properties.template.containers[0].env"` : `{"name": "X"}` sans `"value"`. Même contournement : passer par un template ARM (`az deployment group create`) plutôt que les flags `create`/`update`.
+
+Les fichiers `*.json`/`*-arm.json` créés pendant cette phase manuelle (dans `infra/`) ne sont **pas** commités dans le dépôt (scratch local Cloud Shell) — c'est normal, ils ne sont pas censés survivre : la vraie définition de l'infra reste le code Terraform dans `infra/*.tf`.
+
+## Schéma d'architecture
+
+```mermaid
+flowchart TB
+    subgraph ext["Hors Azure"]
+        browser["Navigateur"]
+        teams["Teams"]
+        relexsaas["RELEX / Generix<br/>(REST / SOAP)"]
+        goldprod["GOLD Oracle<br/>(datacenter LabelVie)<br/>via VPN — pas encore branché"]
+    end
+
+    subgraph aca["Container Apps Environment (cae-ordermgmt-dev)"]
+        agent["agent<br/>poll 60s"]
+        gold["mcp-gold<br/>(stub, temporaire)"]
+        relex["mcp-relex-generix<br/>(stub)"]
+        prom["prometheus<br/>historise 400j"]
+        grafana["grafana<br/>(public)"]
+    end
+
+    kv["Key Vault<br/>kv-ordermgmtda4e111"]
+    acr["ACR<br/>acrordermgmtdeva4e111"]
+
+    browser -->|https, public| grafana
+    grafana -->|requêtes PromQL| prom
+    prom -->|scrape /metrics| agent
+    agent -->|MCP| gold
+    agent -->|MCP| relex
+    relex -->|REST / SOAP| relexsaas
+    grafana -->|webhook, si critique| teams
+    goldprod -.->|remplacera gold en prod| gold
+
+    agent -.->|lit secrets, identité managée| kv
+    relex -.->|lit secrets| kv
+    grafana -.->|lit secrets| kv
+    agent -.->|pull image| acr
+    gold -.->|pull image| acr
+    relex -.->|pull image| acr
+```
+
+## Passer en production
+
+Dans l'ordre, quand LabelVie est prêt à brancher les vrais systèmes :
+
+1. **Déployer `mcp-gold` on-premises** dans le datacenter LabelVie (c'est prévu pour, voir `specs.md` §9) et activer le VPN Gateway (`deploy_vpn_gateway = true` dans `terraform.tfvars`, puis `terraform apply` — c'est la ressource la plus longue à créer, compter 30-45 min).
+2. **Décommenter les connecteurs "live"** dans le code (marqués et expliqués en commentaire dans chaque fichier) :
+   - `services/mcp_gold/app/connectors.py` → `LiveGoldConnector`
+   - `services/mcp_relex_generix/app/connectors.py` → `LiveRelexConnector` / `LiveGenerixConnector`
+   
+   Puis reconstruire et repousser les images (`az acr build` ou le pipeline GitHub Actions).
+3. **Renseigner les vrais identifiants dans le Key Vault** `kv-ordermgmtda4e111` (jamais dans le code ni dans Terraform) : `oracle-dsn`, `oracle-user`, `oracle-password`, `relex-client-id`, `relex-client-secret`, `relex-api-key`, `generix-api-key`. Remplace directement la valeur du secret existant (le Key Vault garde l'historique des versions).
+4. **Basculer les modes de "stub" à "live"** : `GOLD_MODE=live`, `RELEX_MODE=live`, `GENERIX_MODE=live` sur les Container Apps correspondantes (`az containerapp update --set-env-vars ...` — ou, plus fiable vu le bug documenté plus haut, un petit template ARM comme `fix-envvars.json`).
+5. **Supprimer `ca-ordermgmt-dev-gold`** (le stub temporaire dans Azure) et rebrancher `MCP_GOLD_URL` sur l'agent vers l'hôte on-premises réel (`https://<hôte-onprem>:8001/mcp`), maintenant joignable via le VPN de l'étape 1.
+6. **Remplacer les mots de passe placeholder** (`grafana-admin-password`, `teams-webhook-url` valent encore `changeme` dans le Key Vault) par les vraies valeurs.
+7. **Réconcilier Terraform** : plusieurs ressources ont été créées à la main pendant le dépannage (voir plus haut) et n'existent pas dans le state Terraform. Avant de redonner la main au pipeline GitHub Actions, les importer une par une :
+   ```bash
+   terraform import azurerm_container_app.mcp_relex_generix /subscriptions/.../resourceGroups/lbv-rg-monitoring-agent-ordermgnt/providers/Microsoft.App/containerApps/ca-ordermgmt-dev-relex-generix
+   terraform import azurerm_container_app.agent .../containerApps/ca-ordermgmt-dev-agent
+   terraform import azurerm_container_app.prometheus .../containerApps/ca-ordermgmt-dev-prometheus
+   terraform import azurerm_container_app.grafana .../containerApps/ca-ordermgmt-dev-grafana
+   ```
+   (`ca-ordermgmt-dev-gold` n'a pas d'équivalent dans le code Terraform — normal, c'est un stub temporaire hors architecture cible, à supprimer plutôt qu'à importer, cf. étape 5.)
 
 ## Bloc 0 — à refaire à chaque nouvelle session Cloud Shell
 
@@ -103,8 +189,8 @@ Après ce bloc : `cd ..` pour revenir à `MonitoringAgent/` avant un `az acr bui
 - [x] **Bloc 4** — Apply partiel fait (resource group + ACR `acrordermgmtdeva4e111` + Key Vault créés)
 - [x] Variable GitHub `ACR_LOGIN_SERVER` = `acrordermgmtdeva4e111.azurecr.io`
 - [x] **Bloc 5** — Build + push des 3 images via `az acr build` (agent, mcp-gold, mcp-relex-generix — les 3 confirmés dans le registre)
-- [ ] **Bloc 6** — `terraform apply` complet — bug NSG identifié et corrigé (voir ci-dessous), à relancer avec `git pull` + `terraform apply`
-- [ ] Vérification : dashboard Grafana accessible, données stub visibles
+- [x] **Bloc 6** — fait à la main (voir "État final" plus bas) après une session Cloud Shell perdue en plein `terraform apply` — bug NSG corrigé dans le code, mais le reste des 4 apps a été recréé en CLI Azure plutôt que de relancer Terraform
+- [x] Vérification : dashboard Grafana accessible, connexion admin OK, pipeline agent → gold/relex (stub) → prometheus → grafana bouclé de bout en bout
 
 ### Correctif appliqué en cours de route : accès réseau ACR/Key Vault/stockage
 
