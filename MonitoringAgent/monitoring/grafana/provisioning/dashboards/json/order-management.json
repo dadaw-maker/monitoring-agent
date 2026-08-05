@@ -5,7 +5,7 @@
   "schemaVersion": 39,
   "refresh": "30s",
   "time": {
-    "from": "now-24h",
+    "from": "now-7d",
     "to": "now"
   },
   "panels": [
@@ -773,13 +773,151 @@
     },
     {
       "type": "row",
-      "title": "CE QUI DEMANDE UNE DÉCISION",
+      "title": "HISTORIQUE — REPRENDRE LES CYCLES PRÉCÉDENTS",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
         "y": 23
+      },
+      "panels": []
+    },
+    {
+      "type": "state-timeline",
+      "title": "Indicateur de tête — historique",
+      "description": "Ajuste la période avec le sélecteur de dates en haut à droite (aujourd'hui, 7 jours, 30 jours...) pour revoir un jour ou un cycle précédent.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"TETE\"}",
+          "legendFormat": "Tête"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Conforme",
+                  "color": "green"
+                },
+                "1": {
+                  "text": "À surveiller",
+                  "color": "orange"
+                },
+                "2": {
+                  "text": "En écart",
+                  "color": "red"
+                },
+                "3": {
+                  "text": "Non suivi",
+                  "color": "grey"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "rowHeight": 0.9
+      }
+    },
+    {
+      "type": "state-timeline",
+      "title": "Les 6 étapes — historique",
+      "description": "Une bande par étape, dans le même ordre que ci-dessus. Repère visuellement où et quand une étape a viré orange ou rouge.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "targets": [
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-COLLECTE\"}",
+          "legendFormat": "1. Remontée des ventes"
+        },
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-CALCUL\"}",
+          "legendFormat": "2. Calcul du réassort"
+        },
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-TRANSMISSION\"}",
+          "legendFormat": "3. Transmission des commandes"
+        },
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-DEPART-ENTREPOT\"}",
+          "legendFormat": "4. Envoi à l'entrepôt"
+        },
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-FLUX-DIRECT\"}",
+          "legendFormat": "5. Échange direct hors GOLD"
+        },
+        {
+          "expr": "order_mgmt_chapeau_status{code=\"CHAPEAU-TENUE-CHAINE\"}",
+          "legendFormat": "6. Tenue de la chaîne"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Conforme",
+                  "color": "green"
+                },
+                "1": {
+                  "text": "À surveiller",
+                  "color": "orange"
+                },
+                "2": {
+                  "text": "En écart",
+                  "color": "red"
+                },
+                "3": {
+                  "text": "Non suivi",
+                  "color": "grey"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "options": {
+        "showValue": "never",
+        "mergeValues": true,
+        "rowHeight": 0.9
+      }
+    },
+    {
+      "type": "row",
+      "title": "CE QUI DEMANDE UNE DÉCISION",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 38
       },
       "panels": []
     },
@@ -794,7 +932,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 24
+        "y": 39
       },
       "options": {
         "reduceOptions": {
@@ -846,7 +984,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 24
+        "y": 39
       },
       "options": {
         "reduceOptions": {
@@ -898,7 +1036,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 24
+        "y": 39
       },
       "options": {
         "mode": "markdown",
@@ -913,7 +1051,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 45
       },
       "panels": []
     },
@@ -928,7 +1066,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -985,7 +1123,7 @@
         "h": 6,
         "w": 4,
         "x": 4,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -1042,7 +1180,7 @@
         "h": 6,
         "w": 4,
         "x": 8,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -1099,7 +1237,7 @@
         "h": 6,
         "w": 4,
         "x": 12,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -1156,7 +1294,7 @@
         "h": 6,
         "w": 4,
         "x": 16,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -1213,7 +1351,7 @@
         "h": 6,
         "w": 4,
         "x": 20,
-        "y": 31
+        "y": 46
       },
       "options": {
         "reduceOptions": {
@@ -1267,7 +1405,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 52
       },
       "panels": [
         {
@@ -1281,7 +1419,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 38
+            "y": 53
           },
           "options": {
             "showHeader": true
@@ -1306,7 +1444,7 @@
             "h": 6,
             "w": 24,
             "x": 0,
-            "y": 48
+            "y": 63
           },
           "targets": [
             {
