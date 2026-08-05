@@ -47,6 +47,14 @@ poll_last_timestamp = Gauge(
     registry=registry,
 )
 
+dag_status = Gauge(
+    "order_mgmt_dag_status",
+    "Statut du dernier run d'un DAG Airflow individuel : 0=succès 1=échec "
+    "(backs CAL-8, CAL-9, TRA-6, WMS-9 — specs.md §4 « Périmètre Airflow »)",
+    ["group", "dag_id"],
+    registry=registry,
+)
+
 # --------------------------------------------------------------------------
 # Compteurs bruts dédiés à la maquette de tableau de bord (specs.md §8).
 # Les indicateurs unitaires/chapeaux exposent des %/statuts, mais la maquette
@@ -79,3 +87,10 @@ def publish_unitaires(results: dict[str, IndicatorResult]) -> None:
 def publish_chapeaux(results: dict[str, ChapeauResult]) -> None:
     for result in results.values():
         chapeau_status.labels(code=result.code).set(result.to_prometheus_status_value())
+
+
+def publish_dag_group(group: str, data: dict | None) -> None:
+    """Publishes one series per DAG in a get_airflow_dags_status() bulk result,
+    so a dashboard can show which specific DAG failed, not just the group total."""
+    for dag_id, state in (data or {}).get("dags", {}).items():
+        dag_status.labels(group=group, dag_id=dag_id).set(0.0 if state == "success" else 1.0)

@@ -175,6 +175,7 @@ async def run_cycle() -> None:
         poll_last_timestamp,
         poll_success,
         publish_chapeaux,
+        publish_dag_group,
         publish_dashboard_essentiel,
         publish_unitaires,
     )
@@ -187,6 +188,10 @@ async def run_cycle() -> None:
         publish_unitaires(unitaire_results)
         publish_chapeaux(chapeau_results)
         publish_dashboard_essentiel(extract_essentiel_counts(gold, rg))
+        publish_dag_group("CAL-8", gold["cal_8_dags"])
+        publish_dag_group("CAL-9", gold["cal_9_dags"])
+        publish_dag_group("TRA-6", gold["tra_6_dags"])
+        publish_dag_group("WMS-9", gold["wms_9_dags"])
 
         snapshot.unitaires = unitaire_results
         snapshot.chapeaux = chapeau_results
