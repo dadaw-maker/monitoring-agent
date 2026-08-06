@@ -92,6 +92,235 @@
       }
     },
     {
+      "type": "table",
+      "title": "Pourquoi ce statut, en ce moment ?",
+      "description": "Détail, en direct, des indicateurs qui composent ce statut (pas d'historique ici — voir la section 5 pour la cause d'un problème passé).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "expr": "order_mgmt_indicator_status{code=~\"COL-2|CAL-4|WMS-6|WMS-8\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "instance": true,
+              "job": true,
+              "niveau": true,
+              "type": true
+            },
+            "indexByName": {
+              "code": 0,
+              "Value": 1
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "code"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Indicateur"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "COL-1": {
+                        "text": "COL-1 — Exécution du batch nocturne O4HQ → GOLD"
+                      },
+                      "COL-2": {
+                        "text": "COL-2 — Taux de succès de remontée du Serveur Central (O4HQ)"
+                      },
+                      "COL-3": {
+                        "text": "COL-3 — Latence de mise à jour du stock GOLD"
+                      },
+                      "COL-4": {
+                        "text": "COL-4 — Anomalies et rejets à la collecte"
+                      },
+                      "COL-5": {
+                        "text": "COL-5 — Complétude des données pour le calcul RELEX"
+                      },
+                      "COL-6": {
+                        "text": "COL-6 — Cohérence stock GOLD vs stock physique"
+                      },
+                      "CAL-1": {
+                        "text": "CAL-1 — Disponibilité du service RELEX"
+                      },
+                      "CAL-2": {
+                        "text": "CAL-2 — Durée du calcul de réassort"
+                      },
+                      "CAL-3": {
+                        "text": "CAL-3 — Taux d'erreur ou de timeout du calcul"
+                      },
+                      "CAL-4": {
+                        "text": "CAL-4 — Propositions générées vs attendues"
+                      },
+                      "CAL-5": {
+                        "text": "CAL-5 — Durée moyenne du calcul sur la période"
+                      },
+                      "CAL-6": {
+                        "text": "CAL-6 — Taux d'activation du flux de secours"
+                      },
+                      "CAL-7": {
+                        "text": "CAL-7 — Taux de propositions en anomalie fonctionnelle"
+                      },
+                      "CAL-8": {
+                        "text": "CAL-8 — Disponibilité des DAGs cœur ventes/stock"
+                      },
+                      "CAL-9": {
+                        "text": "CAL-9 — Taux de succès des DAGs référentiel"
+                      },
+                      "TRA-1": {
+                        "text": "TRA-1 — Taux de succès du flux Order Proposals"
+                      },
+                      "TRA-2": {
+                        "text": "TRA-2 — Latence de transmission unitaire"
+                      },
+                      "TRA-3": {
+                        "text": "TRA-3 — Taux de rejets techniques à l'interface"
+                      },
+                      "TRA-4": {
+                        "text": "TRA-4 — Taux de transformation proposition → commande"
+                      },
+                      "TRA-5": {
+                        "text": "TRA-5 — Délai réception → création de commande"
+                      },
+                      "TRA-6": {
+                        "text": "TRA-6 — Disponibilité des DAGs RELEX → GOLD"
+                      },
+                      "WMS-1": {
+                        "text": "WMS-1 — Taux de succès de l'import WMS"
+                      },
+                      "WMS-2": {
+                        "text": "WMS-2 — Disponibilité du canal d'échange GOLD → WMS"
+                      },
+                      "WMS-3": {
+                        "text": "WMS-3 — Disponibilité du service WMS"
+                      },
+                      "WMS-4": {
+                        "text": "WMS-4 — Durée du traitement d'import côté WMS"
+                      },
+                      "WMS-5": {
+                        "text": "WMS-5 — Taux d'erreur ou de timeout de l'import WMS"
+                      },
+                      "WMS-6": {
+                        "text": "WMS-6 — Respect des règles de cut-off par enseigne"
+                      },
+                      "WMS-7": {
+                        "text": "WMS-7 — Commandes bloquées ou en attente côté WMS"
+                      },
+                      "WMS-8": {
+                        "text": "WMS-8 — Complétude des données transmises"
+                      },
+                      "WMS-9": {
+                        "text": "WMS-9 — Taux de succès des DAGs interfaces GOLD → WMS"
+                      },
+                      "DIR-1": {
+                        "text": "DIR-1 — Disponibilité et fiabilité du flux direct"
+                      },
+                      "DIR-2": {
+                        "text": "DIR-2 — Nature et contenu des données échangées"
+                      },
+                      "DIR-3": {
+                        "text": "DIR-3 — Volume et fréquence du flux"
+                      },
+                      "E2E-1": {
+                        "text": "E2E-1 — Lead time global (collecte → ordre WMS)"
+                      },
+                      "E2E-2": {
+                        "text": "E2E-2 — Traçabilité de l'identifiant de proposition RELEX"
+                      },
+                      "E2E-3": {
+                        "text": "E2E-3 — Disponibilité simultanée RELEX / GOLD / WMS"
+                      },
+                      "E2E-4": {
+                        "text": "E2E-4 — Taux de cycles nominaux sans recours au secours"
+                      },
+                      "E2E-5": {
+                        "text": "E2E-5 — Incidents nécessitant une intervention manuelle"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Statut"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Conforme",
+                        "color": "green"
+                      },
+                      "1": {
+                        "text": "À surveiller",
+                        "color": "orange"
+                      },
+                      "2": {
+                        "text": "Bloquant",
+                        "color": "red"
+                      },
+                      "3": {
+                        "text": "Donnée indisponible",
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "type": "state-timeline",
       "title": "Historique — un état par jour",
       "description": "Le pire statut rencontré ce jour-là : bien tourné / repris à la main / pas tourné. Ajuste la période avec le sélecteur de dates en haut à droite pour revoir plus loin.",
@@ -103,7 +332,7 @@
         "h": 5,
         "w": 24,
         "x": 0,
-        "y": 7
+        "y": 12
       },
       "targets": [
         {
@@ -161,7 +390,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 17
       },
       "panels": []
     },
@@ -176,7 +405,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -245,7 +474,7 @@
         "h": 6,
         "w": 4,
         "x": 4,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -314,7 +543,7 @@
         "h": 6,
         "w": 4,
         "x": 8,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -383,7 +612,7 @@
         "h": 6,
         "w": 4,
         "x": 12,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -452,7 +681,7 @@
         "h": 6,
         "w": 4,
         "x": 16,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -521,7 +750,7 @@
         "h": 6,
         "w": 4,
         "x": 20,
-        "y": 13
+        "y": 18
       },
       "options": {
         "reduceOptions": {
@@ -580,6 +809,248 @@
       }
     },
     {
+      "type": "table",
+      "title": "Pourquoi ces statuts, en ce moment ?",
+      "description": "Détail, en direct, des indicateurs qui composent le statut de chaque étape (pas d'historique ici — voir la section 5 pour la cause d'un problème passé).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus_ordermgmt"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(order_mgmt_indicator_status{code=~\"COL-1|COL-2\"}, \"etape\", \"1. Remontée des ventes\", \"code\", \"(COL-1|COL-2)\") or label_replace(order_mgmt_indicator_status{code=~\"CAL-1|CAL-4|CAL-6|CAL-8\"}, \"etape\", \"2. Calcul du réassort\", \"code\", \"(CAL-1|CAL-4|CAL-6|CAL-8)\") or label_replace(order_mgmt_indicator_status{code=~\"TRA-1|TRA-4|TRA-6\"}, \"etape\", \"3. Transmission des commandes\", \"code\", \"(TRA-1|TRA-4|TRA-6)\") or label_replace(order_mgmt_indicator_status{code=~\"WMS-6|WMS-1|WMS-8|WMS-9\"}, \"etape\", \"4. Envoi à l'entrepôt\", \"code\", \"(WMS-6|WMS-1|WMS-8|WMS-9)\") or label_replace(order_mgmt_indicator_status{code=~\"DIR-1\"}, \"etape\", \"5. Échange direct hors GOLD\", \"code\", \"(DIR-1)\") or label_replace(order_mgmt_indicator_status{code=~\"E2E-1|E2E-4|E2E-2\"}, \"etape\", \"6. Tenue de la chaîne\", \"code\", \"(E2E-1|E2E-4|E2E-2)\")",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "instance": true,
+              "job": true,
+              "niveau": true,
+              "type": true
+            },
+            "indexByName": {
+              "etape": 0,
+              "code": 1,
+              "Value": 2
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "etape"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Étape"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "code"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Indicateur"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "COL-1": {
+                        "text": "COL-1 — Exécution du batch nocturne O4HQ → GOLD"
+                      },
+                      "COL-2": {
+                        "text": "COL-2 — Taux de succès de remontée du Serveur Central (O4HQ)"
+                      },
+                      "COL-3": {
+                        "text": "COL-3 — Latence de mise à jour du stock GOLD"
+                      },
+                      "COL-4": {
+                        "text": "COL-4 — Anomalies et rejets à la collecte"
+                      },
+                      "COL-5": {
+                        "text": "COL-5 — Complétude des données pour le calcul RELEX"
+                      },
+                      "COL-6": {
+                        "text": "COL-6 — Cohérence stock GOLD vs stock physique"
+                      },
+                      "CAL-1": {
+                        "text": "CAL-1 — Disponibilité du service RELEX"
+                      },
+                      "CAL-2": {
+                        "text": "CAL-2 — Durée du calcul de réassort"
+                      },
+                      "CAL-3": {
+                        "text": "CAL-3 — Taux d'erreur ou de timeout du calcul"
+                      },
+                      "CAL-4": {
+                        "text": "CAL-4 — Propositions générées vs attendues"
+                      },
+                      "CAL-5": {
+                        "text": "CAL-5 — Durée moyenne du calcul sur la période"
+                      },
+                      "CAL-6": {
+                        "text": "CAL-6 — Taux d'activation du flux de secours"
+                      },
+                      "CAL-7": {
+                        "text": "CAL-7 — Taux de propositions en anomalie fonctionnelle"
+                      },
+                      "CAL-8": {
+                        "text": "CAL-8 — Disponibilité des DAGs cœur ventes/stock"
+                      },
+                      "CAL-9": {
+                        "text": "CAL-9 — Taux de succès des DAGs référentiel"
+                      },
+                      "TRA-1": {
+                        "text": "TRA-1 — Taux de succès du flux Order Proposals"
+                      },
+                      "TRA-2": {
+                        "text": "TRA-2 — Latence de transmission unitaire"
+                      },
+                      "TRA-3": {
+                        "text": "TRA-3 — Taux de rejets techniques à l'interface"
+                      },
+                      "TRA-4": {
+                        "text": "TRA-4 — Taux de transformation proposition → commande"
+                      },
+                      "TRA-5": {
+                        "text": "TRA-5 — Délai réception → création de commande"
+                      },
+                      "TRA-6": {
+                        "text": "TRA-6 — Disponibilité des DAGs RELEX → GOLD"
+                      },
+                      "WMS-1": {
+                        "text": "WMS-1 — Taux de succès de l'import WMS"
+                      },
+                      "WMS-2": {
+                        "text": "WMS-2 — Disponibilité du canal d'échange GOLD → WMS"
+                      },
+                      "WMS-3": {
+                        "text": "WMS-3 — Disponibilité du service WMS"
+                      },
+                      "WMS-4": {
+                        "text": "WMS-4 — Durée du traitement d'import côté WMS"
+                      },
+                      "WMS-5": {
+                        "text": "WMS-5 — Taux d'erreur ou de timeout de l'import WMS"
+                      },
+                      "WMS-6": {
+                        "text": "WMS-6 — Respect des règles de cut-off par enseigne"
+                      },
+                      "WMS-7": {
+                        "text": "WMS-7 — Commandes bloquées ou en attente côté WMS"
+                      },
+                      "WMS-8": {
+                        "text": "WMS-8 — Complétude des données transmises"
+                      },
+                      "WMS-9": {
+                        "text": "WMS-9 — Taux de succès des DAGs interfaces GOLD → WMS"
+                      },
+                      "DIR-1": {
+                        "text": "DIR-1 — Disponibilité et fiabilité du flux direct"
+                      },
+                      "DIR-2": {
+                        "text": "DIR-2 — Nature et contenu des données échangées"
+                      },
+                      "DIR-3": {
+                        "text": "DIR-3 — Volume et fréquence du flux"
+                      },
+                      "E2E-1": {
+                        "text": "E2E-1 — Lead time global (collecte → ordre WMS)"
+                      },
+                      "E2E-2": {
+                        "text": "E2E-2 — Traçabilité de l'identifiant de proposition RELEX"
+                      },
+                      "E2E-3": {
+                        "text": "E2E-3 — Disponibilité simultanée RELEX / GOLD / WMS"
+                      },
+                      "E2E-4": {
+                        "text": "E2E-4 — Taux de cycles nominaux sans recours au secours"
+                      },
+                      "E2E-5": {
+                        "text": "E2E-5 — Incidents nécessitant une intervention manuelle"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Statut"
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Conforme",
+                        "color": "green"
+                      },
+                      "1": {
+                        "text": "À surveiller",
+                        "color": "orange"
+                      },
+                      "2": {
+                        "text": "Bloquant",
+                        "color": "red"
+                      },
+                      "3": {
+                        "text": "Donnée indisponible",
+                        "color": "grey"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
       "type": "state-timeline",
       "title": "Historique — un état par jour, par étape",
       "description": "Une bande par étape, même ordre que ci-dessus, un seul état par jour (bien tourné / repris à la main / pas tourné).",
@@ -591,7 +1062,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 32
       },
       "targets": [
         {
@@ -674,7 +1145,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 26
+        "y": 39
       },
       "panels": []
     },
@@ -689,7 +1160,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 27
+        "y": 40
       },
       "options": {
         "reduceOptions": {
@@ -741,7 +1212,7 @@
         "h": 6,
         "w": 8,
         "x": 8,
-        "y": 27
+        "y": 40
       },
       "options": {
         "reduceOptions": {
@@ -793,7 +1264,7 @@
         "h": 6,
         "w": 8,
         "x": 16,
-        "y": 27
+        "y": 40
       },
       "options": {
         "mode": "markdown",
@@ -812,7 +1283,7 @@
         "h": 6,
         "w": 12,
         "x": 0,
-        "y": 33
+        "y": 46
       },
       "targets": [
         {
@@ -852,7 +1323,7 @@
         "h": 6,
         "w": 12,
         "x": 12,
-        "y": 33
+        "y": 46
       },
       "targets": [
         {
@@ -888,7 +1359,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 52
       },
       "panels": []
     },
@@ -903,7 +1374,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -960,7 +1431,7 @@
         "h": 6,
         "w": 4,
         "x": 4,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -1017,7 +1488,7 @@
         "h": 6,
         "w": 4,
         "x": 8,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -1074,7 +1545,7 @@
         "h": 6,
         "w": 4,
         "x": 12,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -1131,7 +1602,7 @@
         "h": 6,
         "w": 4,
         "x": 16,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -1188,7 +1659,7 @@
         "h": 6,
         "w": 4,
         "x": 20,
-        "y": 40
+        "y": 53
       },
       "options": {
         "reduceOptions": {
@@ -1246,7 +1717,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 59
       },
       "targets": [
         {
@@ -1366,7 +1837,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 66
       },
       "panels": []
     },
@@ -1382,7 +1853,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 67
       },
       "options": {
         "showHeader": true,
@@ -1624,7 +2095,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 61
+        "y": 74
       },
       "targets": [
         {
@@ -1698,7 +2169,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 61
+        "y": 74
       },
       "options": {
         "showHeader": true,
@@ -1806,7 +2277,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 69
+        "y": 82
       },
       "targets": [
         {
@@ -1852,7 +2323,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 69
+        "y": 82
       },
       "targets": [
         {
@@ -1913,7 +2384,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 76
+        "y": 89
       },
       "panels": [
         {
@@ -1927,7 +2398,7 @@
             "h": 10,
             "w": 24,
             "x": 0,
-            "y": 77
+            "y": 90
           },
           "options": {
             "showHeader": true
@@ -1952,7 +2423,7 @@
             "h": 6,
             "w": 24,
             "x": 0,
-            "y": 87
+            "y": 100
           },
           "targets": [
             {
