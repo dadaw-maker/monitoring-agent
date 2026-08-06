@@ -15,7 +15,7 @@ Un agent interroge en continu les systèmes GOLD (ERP Oracle) et RELEX/Generix (
 
 ## Architecture
 
-Chaque flèche part de l'application qui interroge vers celle qui répond (sauf l'alerte Teams, poussée par Grafana). Les cases bleues tournent dans Azure ; les cases grises sont hors d'Azure.
+Chaque flèche part de l'application qui interroge vers celle qui répond (sauf l'alerte Teams, poussée par Grafana, et les flèches « secrets »/« images », poussées par le besoin des 5 apps au démarrage). Les cases bleues tournent comme **Azure Container Apps**, dans le même environnement ; en dessous, les deux services Azure partagés dont ces apps dépendent au démarrage. Les cases grises sont hors d'Azure.
 
 ```mermaid
 flowchart LR
@@ -24,12 +24,17 @@ flowchart LR
         relexsaas["RELEX / Generix<br/>SaaS externe"]
     end
 
-    subgraph azure["Azure — cae-ordermgmt-dev"]
-        goldApp["mcp-gold<br/><i>stub, temporaire</i>"]
-        relexApp["mcp-relex-generix<br/><i>stub</i>"]
-        agent["agent<br/>vérifie toutes les 60s"]
-        prom["prometheus<br/>historise 400 jours"]
-        grafana["grafana<br/>tableau de bord"]
+    subgraph azure["🅰️ Azure Container Apps — cae-ordermgmt-dev"]
+        goldApp["🅰️ mcp-gold<br/><i>stub, temporaire</i>"]
+        relexApp["🅰️ mcp-relex-generix<br/><i>stub</i>"]
+        agent["🅰️ agent<br/>vérifie toutes les 60s"]
+        prom["🅰️ prometheus<br/>historise 400 jours"]
+        grafana["🅰️ grafana<br/>tableau de bord"]
+    end
+
+    subgraph shared["Services Azure partagés"]
+        kv["🔐 Key Vault<br/>secrets, clés API"]
+        acr["📦 Container Registry<br/>images des 5 apps"]
     end
 
     subgraph ext_right["Hors Azure"]
@@ -45,9 +50,11 @@ flowchart LR
     grafana -->|PromQL| prom
     browser -->|https| grafana
     grafana -->|webhook, si critique| teams
+    azure -->|secrets| kv
+    azure -->|images| acr
 ```
 
-> Non représenté pour la lisibilité : les 5 apps Azure lisent leurs mots de passe et clés dans le **Key Vault** et récupèrent leur image dans le **registre ACR** au démarrage — jamais de secret écrit en clair dans le code.
+> **Au démarrage**, chaque appli de l'environnement lit ses identifiants dans Key Vault et récupère son image dans le registre — jamais de secret écrit en clair dans le code.
 
 ## Ce qui est déployé
 
