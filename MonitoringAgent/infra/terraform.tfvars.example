@@ -1,0 +1,53 @@
+# Copy to terraform.tfvars and fill in. Anything left "changeme" stays a
+# harmless placeholder — flip GOLD_MODE/RELEX_MODE/GENERIX_MODE to "live"
+# only once real credentials have been set directly in Key Vault.
+
+project     = "ordermgmt"
+environment = "dev"
+location    = "westeurope"
+
+# Adopte un resource group déjà existant au lieu d'en créer un nouveau.
+# Nécessite `terraform import azurerm_resource_group.this <resource-id>`
+# avant le premier apply (voir CI-CD.md) — sinon Terraform tente de créer
+# un groupe qui existe déjà et échoue.
+resource_group_name = "lbv-rg-monitoring-agent-ordermgnt"
+
+# --- Networking to the LabelVie datacenter ---
+onprem_address_space         = "10.100.0.0/16"
+onprem_vpn_gateway_public_ip = "203.0.113.10"
+mcp_gold_onprem_host         = "mcp-gold.labelvie.internal"
+mcp_gold_port                = 8001
+vpn_shared_key                = "changeme"
+deploy_vpn_gateway            = true
+
+# --- Images ---
+image_tag = "latest"
+
+# --- Connector modes ---
+gold_mode     = "stub"
+relex_mode    = "stub"
+generix_mode  = "stub"
+
+# --- Alerting ---
+# Webhook entrant d'un canal Teams (Teams > canal > Connecteurs > Webhook
+# entrant). "changeme" déploie avec l'alerte Teams inactive.
+teams_webhook_url = "changeme"
+
+# --- Diagnostic assisté par LLM (specs.md §11) ---
+# "stub" (gabarit fixe, par défaut) ou "live" (appelle la Claude API,
+# nécessite anthropic_api_key). "changeme" reste sans effet tant que
+# llm_mode = "stub".
+llm_mode          = "stub"
+llm_model         = "claude-haiku-4-5"
+anthropic_api_key = "changeme"
+
+# --- Historisation des indicateurs ---
+# Combien de temps Prometheus garde l'historique (permet de "revoir les
+# indicateurs d'une certaine période" dans Grafana). Défaut : 400 jours.
+prometheus_retention_days   = 400
+prometheus_storage_quota_gb = 50
+
+# --- Security ---
+enable_defender_for_cloud     = false
+enable_nsg_flow_logs           = false
+allowed_ip_ranges_for_grafana  = []

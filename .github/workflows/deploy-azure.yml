@@ -1,0 +1,133 @@
+name: Deploy MonitoringAgent to Azure
+
+# Two ways to run this pipeline:
+#  - automatically, when MonitoringAgent/ changes land on main (gated by the
+#    "azure-production" GitHub Environment — add required reviewers there
+#    to turn this into a manual-approval gate);
+#  - on demand, via "Run workflow" in the Actions tab.
+#
+# Auth is OIDC (federated credential) — no client secret is stored in this
+# repo. See MonitoringAgent/CI-CD.md for the one-time Azure AD + GitHub setup.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "MonitoringAgent/**"
+      - ".github/workflows/deploy-azure.yml"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Run terraform apply (unchecked = plan only)"
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write # required for OIDC login to Azure
+  contents: read
+
+env:
+  WORKING_DIR: MonitoringAgent
+  ACR_LOGIN_SERVER: ${{ vars.ACR_LOGIN_SERVER }}
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  build-and-push:
+    name: Build & push images (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    environment: azure-production
+    strategy:
+      matrix:
+        service: [mcp-gold, mcp-relex-generix, agent]
+        include:
+          - service: mcp-gold
+            dockerfile: services/mcp_gold/Dockerfile
+          - service: mcp-relex-generix
+            dockerfile: services/mcp_relex_generix/Dockerfile
+          - service: agent
+            dockerfile: services/agent/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name "${ACR_LOGIN_SERVER%%.*}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.WORKING_DIR }}
+          file: ${{ env.WORKING_DIR }}/${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:latest
+          cache-from: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ env.ACR_LOGIN_SERVER }}/${{ matrix.service }}:buildcache,mode=max
+
+  terraform-apply:
+    name: Terraform apply
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: azure-production
+    defaults:
+      run:
+        working-directory: MonitoringAgent/infra
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_image_tag: ${{ github.sha }}
+      TF_VAR_github_actions_principal_id: ${{ vars.AZURE_CLIENT_OBJECT_ID }}
+      # Site-specific / sensitive values — see CI-CD.md for the full list and
+      # why each one is a GitHub secret rather than a Terraform default.
+      TF_VAR_onprem_address_space: ${{ secrets.TF_ONPREM_ADDRESS_SPACE }}
+      TF_VAR_onprem_vpn_gateway_public_ip: ${{ secrets.TF_ONPREM_VPN_GATEWAY_IP }}
+      TF_VAR_mcp_gold_onprem_host: ${{ secrets.TF_MCP_GOLD_ONPREM_HOST }}
+      TF_VAR_vpn_shared_key: ${{ secrets.TF_VPN_SHARED_KEY }}
+      TF_VAR_grafana_admin_password: ${{ secrets.TF_GRAFANA_ADMIN_PASSWORD }}
+      TF_VAR_teams_webhook_url: ${{ secrets.TF_TEAMS_WEBHOOK_URL }}
+      TF_VAR_oracle_dsn: ${{ secrets.TF_ORACLE_DSN }}
+      TF_VAR_oracle_user: ${{ secrets.TF_ORACLE_USER }}
+      TF_VAR_oracle_password: ${{ secrets.TF_ORACLE_PASSWORD }}
+      TF_VAR_relex_client_id: ${{ secrets.TF_RELEX_CLIENT_ID }}
+      TF_VAR_relex_client_secret: ${{ secrets.TF_RELEX_CLIENT_SECRET }}
+      TF_VAR_relex_api_key: ${{ secrets.TF_RELEX_API_KEY }}
+      TF_VAR_generix_api_key: ${{ secrets.TF_GENERIX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=${{ vars.TF_BACKEND_KEY }}"
+
+      - name: Terraform plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply
+        if: github.event_name == 'push' || inputs.apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Show useful outputs
+        if: github.event_name == 'push' || inputs.apply
+        run: |
+          echo "### Deployment outputs" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          terraform output >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

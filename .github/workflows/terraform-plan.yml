@@ -1,0 +1,86 @@
+name: Terraform plan (preview)
+
+# Runs `terraform plan` on pull requests that touch the infra — a safety net
+# so reviewers see what a merge would actually change in Azure *before* it
+# merges and deploy-azure.yml applies it. Never applies anything.
+on:
+  pull_request:
+    paths:
+      - "MonitoringAgent/infra/**"
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    name: Terraform plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: MonitoringAgent/infra
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_USE_OIDC: true
+      TF_VAR_image_tag: ${{ github.sha }}
+      TF_VAR_github_actions_principal_id: ${{ vars.AZURE_CLIENT_OBJECT_ID }}
+      TF_VAR_onprem_address_space: ${{ secrets.TF_ONPREM_ADDRESS_SPACE }}
+      TF_VAR_onprem_vpn_gateway_public_ip: ${{ secrets.TF_ONPREM_VPN_GATEWAY_IP }}
+      TF_VAR_mcp_gold_onprem_host: ${{ secrets.TF_MCP_GOLD_ONPREM_HOST }}
+      TF_VAR_vpn_shared_key: ${{ secrets.TF_VPN_SHARED_KEY }}
+      TF_VAR_grafana_admin_password: ${{ secrets.TF_GRAFANA_ADMIN_PASSWORD }}
+      TF_VAR_teams_webhook_url: ${{ secrets.TF_TEAMS_WEBHOOK_URL }}
+      TF_VAR_oracle_dsn: ${{ secrets.TF_ORACLE_DSN }}
+      TF_VAR_oracle_user: ${{ secrets.TF_ORACLE_USER }}
+      TF_VAR_oracle_password: ${{ secrets.TF_ORACLE_PASSWORD }}
+      TF_VAR_relex_client_id: ${{ secrets.TF_RELEX_CLIENT_ID }}
+      TF_VAR_relex_client_secret: ${{ secrets.TF_RELEX_CLIENT_SECRET }}
+      TF_VAR_relex_api_key: ${{ secrets.TF_RELEX_API_KEY }}
+      TF_VAR_generix_api_key: ${{ secrets.TF_GENERIX_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=${{ vars.TF_BACKEND_KEY }}"
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        id: plan
+        run: terraform plan -no-color -input=false
+        continue-on-error: true
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `#### Terraform Plan
+            <details><summary>Show plan</summary>
+
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            </details>`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1

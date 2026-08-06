@@ -1,0 +1,14 @@
+# Copy to backend.hcl (gitignored) for local use, or pass the same 4 values
+# as -backend-config="key=value" flags — which is what the GitHub Actions
+# workflow does, sourced from repo variables (see ../CI-CD.md).
+#
+# terraform init -backend-config=backend.hcl
+#
+# The storage account itself is NOT managed by this Terraform (a backend
+# can't bootstrap itself) — create it once with the az CLI commands in
+# ../CI-CD.md "Bootstrap the Terraform backend".
+
+resource_group_name  = "rg-ordermgmt-tfstate"
+storage_account_name = "stordermgmttfstate"
+container_name       = "tfstate"
+key                  = "ordermgmt.tfstate"
