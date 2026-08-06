@@ -255,11 +255,39 @@ Un agent qui lit des systèmes de production doit être **incapable de leur nuir
 - [ ] Trancher les 7 points de clarification du §7 avec les équipes GOLD, RELEX (WZM) et l'intégrateur IDL
 - [ ] Qualifier techniquement le flux direct RELEX ↔ WMS (§6.5) — priorité n°1
 - [ ] Définir le point de contrôle du batch nocturne O4HQ → GOLD (§6.1, COL-1) — priorité n°2
-- [ ] Développer le serveur MCP GOLD (liste blanche d'outils sur vues Oracle dédiées)
-- [ ] Développer le serveur MCP RELEX/Generix (Container Apps)
-- [ ] Développer l'agent de supervision (calcul unitaires → chapeau → publication Prometheus)
+- [x] Développer le serveur MCP GOLD (liste blanche d'outils sur vues Oracle dédiées)
+- [x] Développer le serveur MCP RELEX/Generix (Container Apps)
+- [x] Développer l'agent de supervision (calcul unitaires → chapeau → publication Prometheus)
 - [ ] Calibrer les seuils marqués « à calibrer après observation » sur une période pilote
-- [ ] Construire le tableau de bord Grafana (§8) et les règles d'alerte
+- [x] Construire le tableau de bord Grafana (§8) et les règles d'alerte
+- [x] Diagnostic assisté par LLM — résumeur (§11, point 1)
+- [ ] Diagnostic assisté par LLM — diagnostiqueur avec historique (§11, point 2)
+
+---
+
+## 11. Diagnostic assisté par LLM
+
+Les indicateurs et chapeaux (§5, §6) restent la seule source de vérité — cette section ajoute une couche de **lisibilité**, pas une nouvelle logique de décision. Elle ne modifie ni ne remplace §5 : elle traduit en français ce que ces calculs ont déjà déterminé.
+
+### 11.1 Point 1 — Résumeur (implémenté)
+
+Après le calcul des chapeaux de chaque cycle, si au moins un chapeau n'est pas OK, l'agent transmet un instantané structuré (chapeaux en écart + indicateurs unitaires concernés, avec leurs valeurs et détails déjà calculés) à un LLM, qui produit 2 à 3 phrases d'explication en français.
+
+- **Consigne du prompt** : ne jamais inventer une cause, un chiffre ou un système absent des données fournies ; dire explicitement quand la cause n'est pas déterminable plutôt que spéculer.
+- **Modèle** : un modèle rapide/économique (Haiku) — c'est de la mise en forme, pas du raisonnement complexe.
+- **Fréquence** : uniquement quand un chapeau est en écart, jamais à chaque cycle (coût et latence).
+- **Restitution** : `GET /diagnosis` sur l'agent (texte + horodatage), et un message Teams (même webhook que Grafana, specs.md §9.1) envoyé une seule fois par nouveau texte — pas de spam si le même écart persiste plusieurs cycles.
+- **Mode stub par défaut** (`LLM_MODE=stub`) : un gabarit fixe, sans appel externe, pour que le pipeline fonctionne de bout en bout sans clé API — même principe que `GOLD_MODE`/`RELEX_MODE`/`GENERIX_MODE`. `LLM_MODE=live` appelle la Claude API (`ANTHROPIC_API_KEY`, Key Vault).
+
+### 11.2 Point 2 — Diagnostiqueur avec historique (à faire)
+
+Différence avec le point 1 : le point 1 ne voit que l'instant présent (le cycle en cours) ; pour repérer une tendance ("cette latence grimpe depuis 3h" plutôt que "cette latence est élevée là, maintenant"), il faut donner au LLM l'historique récent des indicateurs concernés — ce que l'agent ne fait pas aujourd'hui (il publie vers Prometheus, il n'y interroge pas). Nécessite d'ajouter à l'agent une requête `range` vers Prometheus (les dernières heures des indicateurs en écart) avant l'appel LLM.
+
+### 11.3 Garde-fous (specs.md §9.4, inchangés pour cette couche)
+
+- Le LLM ne reçoit **que** l'instantané que l'agent a déjà calculé — aucun accès direct à GOLD, RELEX, WMS ou Airflow.
+- Le LLM ne déclenche aucune action : ni relance, ni correction, ni commande. Il produit du texte, rien d'autre.
+- Un échec du LLM (timeout, erreur API, clé absente) ne fait jamais échouer le cycle de supervision — `poll_success` reste indépendant du diagnostic.
 
 ---
 

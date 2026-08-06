@@ -70,6 +70,7 @@ locals {
     "relex-api-key"            = var.relex_api_key
     "generix-api-key"          = var.generix_api_key
     "grafana-admin-password"   = var.grafana_admin_password
+    "anthropic-api-key"        = var.anthropic_api_key
     "vpn-shared-key"           = var.vpn_shared_key
     "teams-webhook-url"        = var.teams_webhook_url
   }

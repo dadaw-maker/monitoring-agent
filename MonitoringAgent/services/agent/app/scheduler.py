@@ -13,13 +13,15 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
-from ordermgmt_common.models import ChapeauResult, IndicatorResult
+from ordermgmt_common.models import ChapeauResult, IndicatorResult, IndicatorStatus
 
 from . import indicators_chapeau as chapeau
 from . import indicators_unitaires as unitaires
 from .config import settings
 from .dashboard_essentiel import extract_essentiel_counts
+from .llm_diagnosis import build_diagnosis_connector
 from .mcp_clients import safe_call
+from .teams_notifier import post_diagnosis
 
 logger = logging.getLogger("agent.scheduler")
 
@@ -82,9 +84,12 @@ class Snapshot:
         self.chapeaux: dict[str, ChapeauResult] = {}
         self.last_run_at: datetime | None = None
         self.last_run_ok: bool = False
+        self.diagnosis: str | None = None
+        self.diagnosis_at: datetime | None = None
 
 
 snapshot = Snapshot()
+diagnosis_connector = build_diagnosis_connector()
 
 
 async def _fetch_gold() -> dict[str, dict[str, Any] | None]:
@@ -198,6 +203,20 @@ async def run_cycle() -> None:
         snapshot.last_run_ok = True
         poll_success.set(1)
         logger.info("Poll cycle OK — %d unitaires, %d chapeaux", len(unitaire_results), len(chapeau_results))
+
+        # LLM diagnosis (specs.md §11) — best-effort, never affects poll_success:
+        # a commentary failure is not a supervision failure.
+        try:
+            if any(c.status != IndicatorStatus.OK for c in chapeau_results.values()):
+                diagnosis_text = await diagnosis_connector.diagnose(chapeau_results, unitaire_results)
+            else:
+                diagnosis_text = None
+            if diagnosis_text and diagnosis_text != snapshot.diagnosis:
+                await post_diagnosis(diagnosis_text)
+            snapshot.diagnosis = diagnosis_text
+            snapshot.diagnosis_at = datetime.now(timezone.utc) if diagnosis_text else None
+        except Exception:  # noqa: BLE001
+            logger.exception("LLM diagnosis failed")
     except Exception:  # noqa: BLE001 — a cycle must never crash the scheduler loop
         snapshot.last_run_ok = False
         poll_success.set(0)

@@ -120,6 +120,8 @@ resource "azurerm_container_app" "agent" {
   revision_mode                = "Single"
   tags                          = local.tags
 
+  depends_on = [time_sleep.wait_for_kv_rbac] # let the Key Vault Secrets User grant propagate first
+
   identity {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.agent.id]
@@ -128,6 +130,17 @@ resource "azurerm_container_app" "agent" {
   registry {
     server   = azurerm_container_registry.this.login_server
     identity = azurerm_user_assigned_identity.agent.id
+  }
+
+  secret {
+    name                = "anthropic-api-key"
+    key_vault_secret_id = azurerm_key_vault_secret.this["anthropic-api-key"].id
+    identity            = azurerm_user_assigned_identity.agent.id
+  }
+  secret {
+    name                = "teams-webhook-url"
+    key_vault_secret_id = azurerm_key_vault_secret.this["teams-webhook-url"].id
+    identity            = azurerm_user_assigned_identity.agent.id
   }
 
   template {
@@ -154,6 +167,23 @@ resource "azurerm_container_app" "agent" {
       env {
         name  = "POLL_INTERVAL_SECONDS"
         value = "60"
+      }
+      env {
+        # specs.md §11.1 — résumeur LLM, désactivé (gabarit fixe) par défaut.
+        name  = "LLM_MODE"
+        value = var.llm_mode
+      }
+      env {
+        name  = "LLM_MODEL"
+        value = var.llm_model
+      }
+      env {
+        name        = "ANTHROPIC_API_KEY"
+        secret_name = "anthropic-api-key"
+      }
+      env {
+        name        = "TEAMS_WEBHOOK_URL"
+        secret_name = "teams-webhook-url"
       }
 
       liveness_probe {

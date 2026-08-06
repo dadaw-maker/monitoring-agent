@@ -170,7 +170,26 @@ variable "grafana_admin_password" {
 }
 
 variable "teams_webhook_url" {
-  description = "Incoming webhook URL of the Teams channel that receives supervision alerts (specs.md §9.1 \"Grafana ... route les alertes\"). Leave as placeholder to deploy with alerting disabled."
+  description = "Incoming webhook URL of the Teams channel that receives supervision alerts (specs.md §9.1 \"Grafana ... route les alertes\") and the LLM diagnosis (specs.md §11). Leave as placeholder to deploy with alerting disabled."
+  type        = string
+  default     = "changeme"
+  sensitive   = true
+}
+
+variable "llm_mode" {
+  description = "\"stub\" (default, fixed template, no external call) or \"live\" (calls the Claude API) — specs.md §11."
+  type        = string
+  default     = "stub"
+}
+
+variable "llm_model" {
+  description = "Claude model used for the LLM diagnosis when llm_mode = \"live\" (specs.md §11.1)."
+  type        = string
+  default     = "claude-haiku-4-5"
+}
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key, required only when llm_mode = \"live\" (specs.md §11.1)."
   type        = string
   default     = "changeme"
   sensitive   = true

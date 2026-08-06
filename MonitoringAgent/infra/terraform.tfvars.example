@@ -33,6 +33,14 @@ generix_mode  = "stub"
 # entrant). "changeme" déploie avec l'alerte Teams inactive.
 teams_webhook_url = "changeme"
 
+# --- Diagnostic assisté par LLM (specs.md §11) ---
+# "stub" (gabarit fixe, par défaut) ou "live" (appelle la Claude API,
+# nécessite anthropic_api_key). "changeme" reste sans effet tant que
+# llm_mode = "stub".
+llm_mode          = "stub"
+llm_model         = "claude-haiku-4-5"
+anthropic_api_key = "changeme"
+
 # --- Historisation des indicateurs ---
 # Combien de temps Prometheus garde l'historique (permet de "revoir les
 # indicateurs d'une certaine période" dans Grafana). Défaut : 400 jours.

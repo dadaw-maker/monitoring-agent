@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     wms4_duration_p95_warning_seconds: float = 900
     e2e1_lead_time_target_seconds: float = 6 * 3600  # objectif dashboard §8 : 6h
 
+    # Diagnostic assisté par LLM (specs.md §11) — résume en langage naturel
+    # les chapeaux en écart, à partir des indicateurs déjà calculés ce
+    # cycle-ci. Ne lit ni n'écrit jamais vers GOLD/RELEX/WMS : uniquement le
+    # texte produit par ce cycle (specs.md §9.4 "agent sans autonomie d'action").
+    llm_mode: str = "stub"
+    llm_model: str = "claude-haiku-4-5"
+    anthropic_api_key: str = ""
+    teams_webhook_url: str = ""
+
     log_level: str = "INFO"
 
 

@@ -64,3 +64,14 @@ def indicators() -> JSONResponse:
             "chapeaux": {code: result.model_dump(mode="json") for code, result in snapshot.chapeaux.items()},
         }
     )
+
+
+@app.get("/diagnosis")
+def diagnosis() -> JSONResponse:
+    """Latest LLM-generated explanation (specs.md §11), or null if nothing is degraded."""
+    return JSONResponse(
+        {
+            "text": snapshot.diagnosis,
+            "generated_at": snapshot.diagnosis_at.isoformat() if snapshot.diagnosis_at else None,
+        }
+    )

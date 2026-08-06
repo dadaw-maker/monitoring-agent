@@ -39,6 +39,10 @@ services:
       MCP_GOLD_URL: http://mcp-gold:8001/mcp
       MCP_RELEX_GENERIX_URL: http://mcp-relex-generix:8002/mcp
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-60}
+      LLM_MODE: ${LLM_MODE:-stub}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
     depends_on:
       - mcp-gold
       - mcp-relex-generix
